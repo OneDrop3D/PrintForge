@@ -1,0 +1,196 @@
+<!doctype html>
+<html lang="fr">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>OneDrop PrintForge</title>
+<style>
+  /* mêmes couleurs que l'application OneDrop3D : plaque sombre, orange de la marque, cartes claires ou sombres */
+  :root {
+    --plaque: #35353e; --plaque-2: #45454f; --sur-plaque: #c9c8d2;
+    --orange: #fa6831; --orange-2: #e65a24; --bleu: #0097d4;
+    --bg: #f6f5f2; --carte: #fff; --ligne: #e3e0d9; --encre: #1c1b19; --muet: #6f6a62; --ko: #c0392b; --ok: #23874f;
+  }
+  @media (prefers-color-scheme: dark) {
+    :root { --bg: #171614; --carte: #252421; --ligne: #3a3834; --encre: #efece6; --muet: #a29d93; --ko: #f0676b; --ok: #3fb67a; }
+  }
+  * { box-sizing: border-box; }
+  html, body { height: 100%; }
+  body { margin: 0; display: flex; flex-direction: column; background: var(--bg); color: var(--encre);
+    font: 14px/1.5 -apple-system, BlinkMacSystemFont, "Segoe UI", system-ui, sans-serif; -webkit-font-smoothing: antialiased; overflow: hidden; }
+  header { display: flex; align-items: center; gap: 18px; padding: 10px 16px; background: var(--plaque); }
+  .marque { display: flex; align-items: center; gap: 10px; flex: none; color: #fff; }
+  .marque img { width: 38px; height: 38px; display: block; }
+  .marque b { display: block; font-size: 15px; line-height: 1.2; }
+  .marque span { display: block; font-size: 12px; color: var(--sur-plaque); }
+  .selecteur { flex: 1; max-width: 520px; display: grid; grid-template-columns: repeat(3, 1fr); gap: 6px; padding: 4px; border-radius: 13px; background: var(--plaque-2); }
+  .selecteur button { font: inherit; font-size: 15px; font-weight: 650; min-height: 40px; padding: 6px 12px; border: 0; border-radius: 10px;
+    background: none; color: var(--sur-plaque); cursor: pointer; }
+  .selecteur button:hover { color: #fff; background: rgba(255, 255, 255, .08); }
+  .selecteur button[aria-selected="true"] { background: var(--orange); color: #1b1412; }
+  #majVerifier { margin-left: auto; flex: none; font: inherit; font-size: 13px; color: var(--sur-plaque); background: none;
+    border: 1px solid var(--plaque-2); border-radius: 10px; padding: 7px 11px; cursor: pointer; }
+  #majVerifier:hover { color: #fff; border-color: var(--sur-plaque); }
+  header button:focus-visible { outline: 2px solid var(--bleu); outline-offset: 2px; }
+
+  .bandeau { display: flex; gap: 12px 18px; align-items: flex-start; justify-content: space-between; flex-wrap: wrap;
+    padding: 10px 16px; background: var(--carte); border-bottom: 1px solid var(--ligne); }
+  .bandeau summary { cursor: pointer; color: var(--muet); font-size: 13px; margin-top: 2px; }
+  #majNotes { white-space: pre-line; max-height: 150px; overflow: auto; font-size: 13px; margin-top: 6px; }
+
+  .vue { flex: 1; min-height: 0; overflow: auto; padding: 22px 20px 28px; }
+  .colonne { max-width: 760px; margin: 0 auto; display: grid; gap: 14px; }
+  .carte { background: var(--carte); border: 1px solid var(--ligne); border-radius: 14px; padding: 16px 18px; }
+  h2 { margin: 0 0 8px; font-size: 16px; }
+  p { margin: 0 0 10px; }
+  ol, ul { margin: 0 0 10px; padding-left: 20px; }
+  li { margin: 4px 0; }
+  .muet { color: var(--muet); font-size: 13px; }
+  .ligne { display: flex; gap: 10px; flex-wrap: wrap; align-items: center; }
+  .ligne + .ligne, .ligne.espace, label.case + .ligne { margin-top: 12px; }
+  .ligne:empty { display: none; }
+  label.champ { display: block; margin-top: 12px; font-size: 12.5px; color: var(--muet); }
+  label.case { display: flex; gap: 8px; align-items: center; margin-top: 10px; }
+  input[type=text], input[type=password], input[type=number], select { display: block; width: 100%; max-width: 360px; margin-top: 4px;
+    font: inherit; font-size: 14px; color: var(--encre); background: var(--bg); border: 1px solid var(--ligne); border-radius: 10px; padding: 7px 10px; }
+  input:focus-visible, select:focus-visible, .bouton:focus-visible, summary:focus-visible { outline: 2px solid var(--bleu); outline-offset: 1px; }
+  .bouton { font: inherit; font-weight: 600; color: var(--encre); background: var(--carte); border: 1px solid var(--ligne); border-radius: 10px;
+    padding: 8px 14px; cursor: pointer; transition: border-color .15s, background .15s; overflow-wrap: anywhere; }
+  .bouton:hover:not(:disabled) { border-color: var(--orange); }
+  .bouton.principal { background: var(--orange); border-color: var(--orange); color: #1b1412; }
+  .bouton.principal:hover:not(:disabled) { background: var(--orange-2); }
+  .bouton:disabled { opacity: .5; cursor: default; }
+  .message { margin: 10px 0 0; overflow-wrap: anywhere; }
+  .message:empty { display: none; }
+  .message.ok { color: var(--ok); font-weight: 600; }
+  .message.ko { color: var(--ko); font-weight: 600; }
+  .alerte { border-left: 3px solid var(--ko); padding: 6px 10px; background: var(--bg); border-radius: 0 8px 8px 0; font-size: 13px; }
+  dl.etat { display: grid; grid-template-columns: max-content 1fr; gap: 4px 18px; margin: 0; }
+  dl.etat dt { color: var(--muet); }
+  dl.etat dd { margin: 0; font-weight: 600; }
+  [hidden] { display: none !important; }
+  @media (max-width: 860px) { .marque span, #majVerifier span { display: none; } .selecteur button { font-size: 14px; } }
+</style>
+</head>
+<body>
+<header>
+  <div class="marque"><img src="icone.png" alt=""><div><b>OneDrop PrintForge</b><span>pour Prusa CORE One</span></div></div>
+  <nav class="selecteur" role="tablist" aria-label="Parties de l’application">
+    <button role="tab" id="onglet-imprimante" aria-controls="imprimante" data-vue="imprimante">Imprimante</button>
+    <button role="tab" id="onglet-firmware" aria-controls="firmware" data-vue="firmware">Firmware</button>
+    <button role="tab" id="onglet-envoyer" aria-controls="envoyer" data-vue="envoyer">Envoyer</button>
+  </nav>
+  <button id="majVerifier" title="Rechercher une mise à jour de l’application">Mises à jour<span id="versionApp"></span></button>
+</header>
+
+<div class="bandeau" id="bandeau" role="region" aria-label="Mise à jour de l’application" hidden>
+  <div>
+    <b id="majTitre"></b>
+    <details id="majDetails"><summary>Nouveautés</summary><div id="majNotes"></div></details>
+    <p class="message" id="majMessage" role="status"></p>
+  </div>
+  <div class="ligne">
+    <button class="bouton principal" id="majInstaller">Mettre à jour</button>
+    <button class="bouton" id="majFermer">Plus tard</button>
+  </div>
+</div>
+
+<main class="vue" id="imprimante" role="tabpanel" aria-labelledby="onglet-imprimante" hidden>
+  <div class="colonne">
+    <section class="carte">
+      <h2>Votre imprimante</h2>
+      <p class="muet" id="sansImprimante">Aucune imprimante reliée : cherchez-la sur le réseau ou saisissez son adresse ci-dessous.</p>
+      <dl class="etat" id="etat" hidden>
+        <dt>Nom</dt><dd id="eNom"></dd>
+        <dt>Firmware</dt><dd id="eFirmware"></dd>
+        <dt>État</dt><dd id="eEtat"></dd>
+        <dt>Buse</dt><dd id="eBuse"></dd>
+        <dt>Plateau</dt><dd id="ePlateau"></dd>
+        <dt class="travail">Impression</dt><dd class="travail" id="eTravail"></dd>
+      </dl>
+      <p class="message" id="msgEtat" role="status"></p>
+    </section>
+
+    <section class="carte">
+      <h2>Relier l’imprimante</h2>
+      <p class="muet">L’imprimante et cet ordinateur doivent être sur le même réseau, avec PrusaLink activé sur l’imprimante : <b>Réglages › Réseau › PrusaLink</b>, qui affiche aussi le mot de passe.</p>
+      <div class="ligne"><button class="bouton" id="chercher">Chercher sur le réseau</button></div>
+      <div class="ligne" id="trouvees"></div>
+      <p class="message" id="msgChercher" role="status"></p>
+      <label class="champ">Adresse de l’imprimante (IP ou nom)<input type="text" id="adresse" placeholder="192.168.1.50" autocomplete="off" spellcheck="false"></label>
+      <label class="champ">Mot de passe PrusaLink<input type="password" id="motDePasse" autocomplete="off"></label>
+      <div class="ligne espace"><button class="bouton principal" id="enregistrer">Enregistrer et tester</button></div>
+      <p class="message" id="msgRelier" role="status"></p>
+    </section>
+  </div>
+</main>
+
+<main class="vue" id="firmware" role="tabpanel" aria-labelledby="onglet-firmware" hidden>
+  <div class="colonne">
+    <section class="carte">
+      <h2>Version à installer</h2>
+      <p class="muet">Le firmware OneDrop3D part du dernier firmware officiel de Prusa et y ajoute nos fonctions. Les versions « Officiel Prusa » servent à revenir en arrière.</p>
+      <label class="champ">Version<select id="version"><option>Lecture des versions sur GitHub…</option></select></label>
+      <p class="message" id="msgVersions" role="status"></p>
+    </section>
+
+    <section class="carte">
+      <h2>Par clé USB</h2>
+      <p class="muet">Choisissez la version, puis branchez une clé USB : PrintForge télécharge le fichier, vérifie son empreinte, le met seul à la racine de la clé (les autres .bbf sont retirés) puis éjecte la clé.</p>
+      <div class="ligne"><span id="cle">Recherche d’une clé USB…</span><button class="bouton principal" id="copier" hidden>Copier sur cette clé</button></div>
+      <p class="message" id="msgCle" role="status"></p>
+    </section>
+
+    <section class="carte">
+      <h2>Par le réseau</h2>
+      <p class="muet">L’imprimante, au repos, reçoit le fichier vérifié puis redémarre pour l’installer. Les firmwares actuels ne le permettent pas encore : PrintForge vous le dira, passez alors par la clé USB.</p>
+      <div class="ligne"><button class="bouton" id="reseau">Installer par le réseau</button></div>
+      <p class="message" id="msgReseau" role="status"></p>
+    </section>
+
+    <section class="carte">
+      <h2>Première installation du firmware OneDrop3D</h2>
+      <p class="alerte">Une seule fois, il faut casser l’appendice de la carte xBuddy : sans cela, l’imprimante refuse tout firmware non officiel. Ce geste est irréversible et c’est votre décision. Les versions officielles s’installent sans lui.</p>
+      <ol>
+        <li>Imprimante éteinte et débranchée, ouvrez le boîtier de l’électronique et cassez la partie centrale du petit sceau marqué « ! » (tournevis plat ou pince fine). L’imprimante n’affiche rien de particulier ensuite : c’est normal.</li>
+        <li>Branchez la clé préparée sur l’imprimante, appuyez sur reset, puis choisissez <b>FLASH</b>.</li>
+        <li>Pour une version identique ou plus ancienne : appuyez sur reset puis, dès que le logo apparaît, une fois sur la molette, et choisissez <b>FLASH</b>.</li>
+        <li>Vérifiez la version dans <b>Info › Infos Version</b>.</li>
+      </ol>
+      <p class="muet">La clé doit être en FAT32 avec le schéma MBR. Sur Mac : Utilitaire de disque › Présentation › Afficher tous les appareils, choisissez la clé elle-même puis Effacer, avec « MS-DOS (FAT) » et « Master Boot Record ». Sur Windows : clic droit sur la clé › Formater › FAT32 (clé de 32 Go au plus).</p>
+      <div class="ligne"><button class="bouton" data-lien="https://help.prusa3d.com/article/flashing-custom-firmware-core-one-l-core-one-mk4-s-mk3-9-s-mk3-5-s_814967">Article Prusa, avec la photo du sceau</button></div>
+    </section>
+  </div>
+</main>
+
+<main class="vue" id="envoyer" role="tabpanel" aria-labelledby="onglet-envoyer" hidden>
+  <div class="colonne">
+    <section class="carte">
+      <h2>Imprimer un fichier</h2>
+      <p class="muet">Un fichier tranché pour la CORE One (.gcode ou .bgcode) part sur la clé USB de l’imprimante, qui l’imprime aussitôt. En Wi-Fi, un gros fichier peut prendre plusieurs minutes.</p>
+      <div class="ligne"><button class="bouton" id="choisirGcode">Choisir un fichier…</button><span class="muet" id="nomGcode">Aucun fichier choisi</span></div>
+      <div class="ligne"><button class="bouton principal" id="envoyerGcode" disabled>Envoyer et imprimer</button><button class="bouton" id="lancerGcode" hidden>Imprimer maintenant</button></div>
+      <p class="message" id="msgGcode" role="status"></p>
+    </section>
+
+    <section class="carte">
+      <h2>Musique</h2>
+      <p class="muet">Un fichier MIDI devient un G-code que les moteurs de l’axe X jouent, une note à la fois (la plus aiguë), autour du centre du plateau. L’imprimante fait d’abord sa mise à l’origine : plateau dégagé.</p>
+      <div class="ligne"><button class="bouton" id="choisirMidi">Choisir un fichier MIDI…</button><span class="muet" id="nomMidi">Aucun fichier choisi</span></div>
+      <label class="champ">Pas par millimètre de l’axe X<input type="number" id="pas" min="1" max="10000" step="any" value="100" aria-describedby="aidePas"></label>
+      <p class="muet" id="aidePas">À régler à l’oreille : trop aigu, augmentez la valeur ; trop grave, diminuez-la (doubler la valeur fait descendre d’une octave).</p>
+      <label class="case"><input type="checkbox" id="jouer" checked> Jouer dès réception</label>
+      <div class="ligne"><button class="bouton principal" id="envoyerMidi" disabled>Convertir et envoyer</button><button class="bouton" id="lancerMidi" hidden>Jouer maintenant</button></div>
+      <p class="message" id="msgMidi" role="status"></p>
+    </section>
+
+    <section class="carte">
+      <h2>Bientôt</h2>
+      <p class="muet">Les bobines TigerTag : le filament réglé tout seul sur l’imprimante par PrusaLink, et l’inventaire synchronisé.</p>
+    </section>
+  </div>
+</main>
+
+<script src="app.js"></script>
+</body>
+</html>

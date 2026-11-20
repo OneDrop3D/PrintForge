@@ -1,0 +1,12 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1024" height="1024" viewBox="0 0 1024 1024">
+  <!-- Icône de OneDrop PrintForge : une buse d'imprimante et la goutte de OneDrop, en blanc sur l'orange de la marque.
+       Rendue en icone-source.png (1024 px), d'où « cargo tauri icon » tire toutes les tailles. -->
+  <rect x="100" y="100" width="824" height="824" rx="185" fill="#fa6831"/>
+  <g fill="#fff">
+    <rect x="484" y="190" width="56" height="70" rx="10"/>
+    <rect x="372" y="246" width="280" height="150" rx="30"/>
+    <path d="M436 396 H588 L538 488 H486 Z"/>
+    <path d="M512 548 C512 548 416 666 416 738 A96 96 0 0 0 608 738 C608 666 512 548 512 548 Z"/>
+  </g>
+  <path d="M562 722 a50 50 0 0 1 -18 56" stroke="#fa6831" stroke-width="16" stroke-linecap="round" fill="none"/>
+</svg>

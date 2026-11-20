@@ -1,0 +1,89 @@
+# OneDrop PrintForge : installateurs Mac (.dmg) et Windows (.exe NSIS), construits à la demande
+# (onglet Actions › « Construction » › Run workflow, en choisissant les systèmes).
+#
+# Comme celle de SecondMonitor : chaque système sur sa machine, tests Rust compris. Les installateurs restent en
+# artefacts (printforge-mac, printforge-windows) ; rien n'est publié d'ici.
+name: Construction
+on:
+  workflow_dispatch:
+    inputs:
+      systemes:
+        description: "Systèmes à construire"
+        type: choice
+        options: [tous, mac, windows]
+        default: tous
+permissions:
+  contents: read
+jobs:
+  mac:
+    if: inputs.systemes != 'windows'
+    runs-on: macos-latest
+    timeout-minutes: 45
+    steps:
+      - uses: actions/checkout@v5
+      - uses: dtolnay/rust-toolchain@stable
+      - uses: Swatinem/rust-cache@v2
+        with: { workspaces: src-tauri }
+      - name: Outil Tauri
+        run: cargo install tauri-cli --version '^2' --locked
+      - name: Tests
+        working-directory: src-tauri
+        run: cargo test
+      # Identité de signature STABLE si les secrets existent (même procédé que SecondMonitor). Sans elle, signature
+      # ad hoc : macOS redemande l'accès au réseau local à chaque nouvelle version.
+      - name: Identité de signature Mac (facultative)
+        env:
+          P12: ${{ secrets.MAC_SIGN_P12 }}
+          MDP: ${{ secrets.MAC_SIGN_P12_PASSWORD }}
+          NOM: ${{ secrets.MAC_SIGN_IDENTITY }}
+        run: |
+          if [ -z "$P12" ]; then echo "Pas d'identité de signature dans les secrets : signature ad hoc."; exit 0; fi
+          k="$RUNNER_TEMP/signature.keychain-db"
+          security create-keychain -p ci "$k"
+          security set-keychain-settings -lut 21600 "$k"
+          security unlock-keychain -p ci "$k"
+          printf '%s' "$P12" | base64 --decode > "$RUNNER_TEMP/identite.p12"
+          security import "$RUNNER_TEMP/identite.p12" -k "$k" -P "$MDP" -T /usr/bin/codesign
+          rm -f "$RUNNER_TEMP/identite.p12"
+          security set-key-partition-list -S apple-tool:,apple: -s -k ci "$k" >/dev/null
+          security list-keychains -d user -s "$k" $(security list-keychains -d user | tr -d '"')
+          echo "ONEDROP3D_SIGN_IDENTITY=${NOM:-OneDrop3D PrintForge}" >> "$GITHUB_ENV"
+      # build.sh signe l'application comme sur le Mac de développement ; l'image disque est faite après la signature.
+      - name: Construction et signature
+        run: ./build.sh --garder
+      - name: Image disque
+        run: |
+          v=$(python3 -c "import json; print(json.load(open('src-tauri/tauri.conf.json'))['version'])")
+          mkdir -p dist/image
+          cp -R "src-tauri/target/release/bundle/macos/OneDrop PrintForge.app" dist/image/
+          ln -s /Applications dist/image/Applications
+          hdiutil create -volname "OneDrop PrintForge" -srcfolder dist/image -ov -format UDZO "dist/OneDrop-PrintForge-$v-mac-arm64.dmg"
+      - uses: actions/upload-artifact@v4
+        with:
+          name: printforge-mac
+          path: dist/*.dmg
+          retention-days: 7
+          compression-level: 0
+
+  windows:
+    if: inputs.systemes != 'mac'
+    runs-on: windows-latest
+    timeout-minutes: 45
+    steps:
+      - uses: actions/checkout@v5
+      - uses: dtolnay/rust-toolchain@stable
+      - uses: Swatinem/rust-cache@v2
+        with: { workspaces: src-tauri }
+      - name: Outil Tauri
+        run: cargo install tauri-cli --version '^2' --locked
+      - name: Tests
+        working-directory: src-tauri
+        run: cargo test
+      - name: Construction
+        run: cargo tauri build --bundles nsis
+      - uses: actions/upload-artifact@v4
+        with:
+          name: printforge-windows
+          path: src-tauri/target/release/bundle/nsis/*.exe
+          retention-days: 7
+          compression-level: 0
