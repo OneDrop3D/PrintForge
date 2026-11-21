@@ -1,7 +1,7 @@
 {
   "$schema": "https://schema.tauri.app/config/2",
   "productName": "OneDrop PrintForge",
-  "version": "0.1.0",
+  "version": "0.1.1",
   "identifier": "fr.onedrop3d.printforge",
   "build": { "frontendDist": "../ui" },
   "app": {
