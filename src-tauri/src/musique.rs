@@ -1,6 +1,9 @@
 /* Musique : un fichier MIDI devient un G-code que les moteurs de l’axe X « chantent ». Un moteur pas à pas sonne à la
- * fréquence de ses pas : pour une note de f Hz, l’axe file à f / pas_par_mm mm/s pendant toute la note. Une seule
- * note à la fois (la plus aiguë), en allers-retours autour du centre du plateau. */
+ * fréquence de ses pas complets (les micro-pas, lissés par les pilotes TMC, s’entendent à peine) : pour une note de
+ * f Hz, l’axe file à f / pas_par_mm mm/s pendant toute la note, pas_par_mm comptant les pas complets (6,25 sur la
+ * CORE One : 100 micro-pas par mm, 16 micro-pas par pas). Compter les micro-pas faisait des mouvements 16 fois plus
+ * courts, qu’on n’entendait presque pas. Une seule note à la fois (la plus aiguë), en grands allers-retours autour du
+ * centre du plateau. */
 use crate::firmware;
 use crate::imprimante::{nom_sur, resultat_envoi, Imprimante};
 use midly::{Format, MetaMessage, MidiMessage, Smf, Timing, TrackEventKind};
@@ -9,8 +12,8 @@ use std::fmt::Write;
 use std::path::Path;
 use tauri::AppHandle;
 
-/// Course permise de part et d’autre du centre, en micromètres.
-const BORNE: i64 = 40_000;
+/// Course permise de part et d’autre du centre, en micromètres : X de 25 à 225 mm sur la CORE One (250 mm).
+const BORNE: i64 = 100_000;
 /// Au-delà de cette vitesse (mm/s), la note descend d’une octave.
 const VITESSE_MAX: f64 = 300.0;
 /// Le centre du plateau de la CORE One (250 × 220 mm).
@@ -245,16 +248,24 @@ mod tests {
 
     #[test]
     fn reste_dans_les_bornes() {
-        // la4 à 10 pas/mm : 44 mm/s ; deux notes de 2 s font chacune 88 mm, plus que les ±40 mm permis
-        let piste: Piste = &[(0, LA_ON), (1920, LA_OFF), (0, LA_ON), (1920, LA_OFF)];
+        // la4 à 10 pas/mm : 44 mm/s ; deux notes de 3 s font chacune 132 mm, plus que les ±100 mm permis
+        let piste: Piste = &[(0, LA_ON), (2880, LA_OFF), (0, LA_ON), (2880, LA_OFF)];
         let (g, ..) = gcode(&midi(0, &[piste]), 10.0).unwrap();
         let (mouvements, _) = lire(&g);
         let mut x = 0;
         for &(dx, _) in &mouvements {
             x += dx;
-            assert!(x.abs() <= 40_000, "hors des bornes : {x} µm");
+            assert!(x.abs() <= 100_000, "hors des bornes : {x} µm");
         }
-        assert_eq!(mouvements.iter().map(|m| m.0).collect::<Vec<_>>(), vec![40_000, -48_000, 48_000, -40_000]);
+        assert_eq!(mouvements.iter().map(|m| m.0).collect::<Vec<_>>(), vec![100_000, -32_000, 32_000, -100_000]);
+    }
+
+    #[test]
+    fn pas_complets_de_la_core_one() {
+        // la4 à 6,25 pas complets par mm : 70,4 mm/s, soit 35,2 mm pour une noire à 120 (0,5 s)
+        let piste: Piste = &[(0, TEMPO_120), (0, LA_ON), (480, LA_OFF)];
+        let (g, ..) = gcode(&midi(0, &[piste]), 6.25).unwrap();
+        assert_eq!(lire(&g).0, vec![(35_200, 4224.0)]);
     }
 
     #[test]

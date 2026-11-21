@@ -175,10 +175,10 @@
 
     <section class="carte">
       <h2>Musique</h2>
-      <p class="muet">Un fichier MIDI devient un G-code que les moteurs de l’axe X jouent, une note à la fois (la plus aiguë), autour du centre du plateau. L’imprimante fait d’abord sa mise à l’origine : plateau dégagé.</p>
+      <p class="muet">Un fichier MIDI devient un G-code que les moteurs de l’axe X jouent, une note à la fois (la plus aiguë), en grands allers-retours autour du centre du plateau. L’imprimante fait d’abord sa mise à l’origine : plateau dégagé. Pour plus de volume, coupez le mode furtif.</p>
       <div class="ligne"><button class="bouton" id="choisirMidi">Choisir un fichier MIDI…</button><span class="muet" id="nomMidi">Aucun fichier choisi</span></div>
-      <label class="champ">Pas par millimètre de l’axe X<input type="number" id="pas" min="1" max="10000" step="any" value="100" aria-describedby="aidePas"></label>
-      <p class="muet" id="aidePas">À régler à l’oreille : trop aigu, augmentez la valeur ; trop grave, diminuez-la (doubler la valeur fait descendre d’une octave).</p>
+      <label class="champ">Pas complets par millimètre de l’axe X<input type="number" id="pas" min="0.1" max="10000" step="any" value="6.25" aria-describedby="aidePas"></label>
+      <p class="muet" id="aidePas">6,25 pour la CORE One. À régler à l’oreille : trop aigu, augmentez la valeur ; trop grave, diminuez-la (doubler la valeur fait descendre d’une octave et réduit les mouvements de moitié).</p>
       <label class="case"><input type="checkbox" id="jouer" checked> Jouer dès réception</label>
       <div class="ligne"><button class="bouton principal" id="envoyerMidi" disabled>Convertir et envoyer</button><button class="bouton" id="cleMidi" disabled>Mettre sur une clé USB</button><button class="bouton" id="lancerMidi" hidden>Jouer maintenant</button></div>
       <p class="message" id="msgMidi" role="status"></p>

@@ -196,7 +196,8 @@ $('#choisirGcode').onclick = async () => {
 };
 $('#envoyerGcode').onclick = (ev) => envoyer(ev.target, $('#msgGcode'), $('#lancerGcode'), 'envoyer_fichier', { chemin: gcode }, true);
 
-$('#pas').value = memoire.lire('pf-pas') || 100;
+// 100 était l'ancienne valeur par défaut, en micro-pas : 6,25 pas complets donnent la même note, en 16 fois plus grand
+$('#pas').value = (memoire.lire('pf-pas') === '100' ? null : memoire.lire('pf-pas')) || 6.25;
 $('#pas').onchange = () => memoire.ecrire('pf-pas', $('#pas').value);
 $('#choisirMidi').onclick = async () => {
   const c = await choisir('MIDI', ['mid', 'midi'], $('#nomMidi'), $('#envoyerMidi'));
