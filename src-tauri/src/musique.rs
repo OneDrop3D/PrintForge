@@ -1,9 +1,10 @@
 /* Musique : un fichier MIDI devient un G-code que les moteurs de l’axe X « chantent ». Un moteur pas à pas sonne à la
  * fréquence de ses pas : pour une note de f Hz, l’axe file à f / pas_par_mm mm/s pendant toute la note. Une seule
  * note à la fois (la plus aiguë), en allers-retours autour du centre du plateau. */
+use crate::firmware;
 use crate::imprimante::{nom_sur, resultat_envoi, Imprimante};
 use midly::{Format, MetaMessage, MidiMessage, Smf, Timing, TrackEventKind};
-use serde_json::Value;
+use serde_json::{json, Value};
 use std::fmt::Write;
 use std::path::Path;
 use tauri::AppHandle;
@@ -134,11 +135,28 @@ pub fn musique_envoyer(app: AppHandle, chemin: String, pas_par_mm: f64, jouer: b
     let imprimante = Imprimante::reliee(&app)?;
     let octets = std::fs::read(&chemin).map_err(|e| format!("Fichier illisible : {e}"))?;
     let (texte, notes, duree) = gcode(&octets, pas_par_mm)?;
-    let nom = nom_sur(&format!("musique-{}", Path::new(&chemin).file_stem().unwrap_or_default().to_string_lossy()), "gcode");
+    let nom = nom_musique(&chemin);
     let mut r = resultat_envoi(imprimante.deposer(&nom, texte.as_bytes(), texte.len() as u64, jouer)?, &nom, jouer)?;
     r["notes"] = notes.into();
     r["duree"] = duree.into();
     Ok(r)
+}
+
+/// Convertit le fichier MIDI et le met sur une clé USB de cet ordinateur, puis l’éjecte : branchée sur l’imprimante,
+/// la musique se lance depuis ses fichiers. L’imprimante n’a pas besoin d’être reliée.
+#[tauri::command(async)]
+pub fn musique_cle(chemin: String, pas_par_mm: f64, cle: String) -> Result<Value, String> {
+    firmware::cle_lisible(&cle)?;
+    let octets = std::fs::read(&chemin).map_err(|e| format!("Fichier illisible : {e}"))?;
+    let (texte, notes, duree) = gcode(&octets, pas_par_mm)?;
+    let nom = nom_musique(&chemin);
+    firmware::ecrire_sur_cle(&cle, &nom, texte.as_bytes())?;
+    Ok(json!({ "nom": nom, "notes": notes, "duree": duree, "ejectee": firmware::ejecter(&cle) }))
+}
+
+/// Le même nom par le réseau ou par la clé : « Mon morceau.mid » → « musique-Mon_morceau.gcode ».
+fn nom_musique(chemin: &str) -> String {
+    nom_sur(&format!("musique-{}", Path::new(chemin).file_stem().unwrap_or_default().to_string_lossy()), "gcode")
 }
 
 #[cfg(test)]

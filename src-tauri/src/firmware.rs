@@ -48,7 +48,40 @@ pub fn firmware_versions() -> Result<Vec<Value>, String> {
             }
         }
     }
+    // GitHub ne range pas les releases dans l'ordre des versions (od3d-8.0.2.10 arrivait après la .4) :
+    // OneDrop3D d'abord, puis la plus récente d'abord dans chaque source.
+    let rang = |v: &Value| DEPOTS.iter().position(|(s, _)| v["source"] == *s).unwrap_or(usize::MAX);
+    versions.sort_by(|a, b| rang(a).cmp(&rang(b)).then_with(|| numeros(b).cmp(&numeros(a))));
     Ok(versions)
+}
+
+/// « od3d-8.0.2.10 » → ([8, 0, 2, 10], finale) ; « v6.4.0-RC2 » → ([6, 4, 0], bêta) : comparées en nombres, la finale avant ses bêtas.
+fn numeros(v: &Value) -> (Vec<u64>, bool) {
+    let tag = v["version"].as_str().unwrap_or("");
+    let base = tag.trim_start_matches("od3d-").trim_start_matches('v').split('-').next().unwrap_or("");
+    (base.split('.').filter_map(|n| n.parse().ok()).collect(), v["beta"] != true)
+}
+
+#[cfg(test)]
+mod tests {
+    #[test]
+    fn ecrit_sur_la_cle_sans_laisser_de_part() {
+        let dossier = std::env::temp_dir().join(format!("printforge-cle-{}", std::process::id()));
+        std::fs::create_dir_all(&dossier).unwrap();
+        super::ecrire_sur_cle(dossier.to_str().unwrap(), "musique-essai.gcode", b"G28\n").unwrap();
+        assert_eq!(std::fs::read(dossier.join("musique-essai.gcode")).unwrap(), b"G28\n");
+        assert!(!dossier.join("od3d-telechargement.part").exists());
+        std::fs::remove_dir_all(&dossier).unwrap();
+    }
+
+    #[test]
+    fn la_plus_recente_d_abord() {
+        let v = |t: &str, beta: bool| serde_json::json!({ "version": t, "beta": beta });
+        assert!(super::numeros(&v("od3d-8.0.2.10", false)) > super::numeros(&v("od3d-8.0.2.9", false)));
+        assert!(super::numeros(&v("v8.0.3-beta", true)) > super::numeros(&v("v8.0.2", false)));
+        assert!(super::numeros(&v("v6.4.0", false)) > super::numeros(&v("v6.4.0-RC2", true)));
+        assert_eq!(super::numeros(&v("od3d-8.0.2", false)).0, vec![8, 0, 2]);
+    }
 }
 
 /// Le fichier d’une version reçue de la page (url, nom, taille, sha256), seulement s’il vient d’une release du firmware.
@@ -126,7 +159,7 @@ fn cles() -> Vec<Value> {
 }
 
 /// macOS : la clé éjectée, ou false si elle n’a pas pu l’être. Ailleurs : None, l’utilisateur l’éjecte lui-même.
-fn ejecter(cle: &str) -> Option<bool> {
+pub(crate) fn ejecter(cle: &str) -> Option<bool> {
     #[cfg(target_os = "macos")]
     return Some(std::process::Command::new("diskutil").args(["eject", cle]).output().is_ok_and(|s| s.status.success()));
     #[cfg(not(target_os = "macos"))]
@@ -141,27 +174,38 @@ pub fn firmware_cles() -> Vec<Value> {
     cles()
 }
 
-/// Le .bbf vérifié, seul à la racine de la clé (règle de Prusa), puis la clé éjectée.
-#[tauri::command(async)]
-pub fn firmware_copier(cle: String, version: Value) -> Result<Value, String> {
-    if !cles().iter().any(|c| c["chemin"] == cle.as_str() && c["probleme"] == "") {
-        return Err("Cette clé n’est plus branchée, ou l’imprimante ne pourrait pas la lire.".into());
+/// La clé est toujours branchée, et l’imprimante pourra la lire.
+pub(crate) fn cle_lisible(cle: &str) -> Result<(), String> {
+    if cles().iter().any(|c| c["chemin"] == cle && c["probleme"] == "") {
+        return Ok(());
     }
-    let (url, nom, taille, sha256) = fichier(&version)?;
-    let octets = telecharger(&url, taille, &sha256)?;
-    let dossier = Path::new(&cle);
-    // jamais un .bbf à moitié écrit sous les yeux de l’imprimante : un .part, renommé une fois complet
+    Err("Cette clé n’est plus branchée, ou l’imprimante ne pourrait pas la lire.".into())
+}
+
+/// Le fichier à la racine de la clé, jamais à moitié écrit sous les yeux de l’imprimante : un .part, renommé une fois complet.
+pub(crate) fn ecrire_sur_cle(cle: &str, nom: &str, octets: &[u8]) -> Result<(), String> {
+    let dossier = Path::new(cle);
     let partiel = dossier.join("od3d-telechargement.part");
     let ecrire = || -> std::io::Result<()> {
         let mut f = fs::File::create(&partiel)?;
-        f.write_all(&octets)?;
+        f.write_all(octets)?;
         f.sync_all()?;
-        fs::rename(&partiel, dossier.join(&nom))
+        fs::rename(&partiel, dossier.join(nom))
     };
-    if let Err(e) = ecrire() {
+    ecrire().map_err(|e| {
         let _ = fs::remove_file(&partiel);
-        return Err(format!("Écriture sur la clé impossible : {e}"));
-    }
+        format!("Écriture sur la clé impossible : {e}")
+    })
+}
+
+/// Le .bbf vérifié, seul à la racine de la clé (règle de Prusa), puis la clé éjectée.
+#[tauri::command(async)]
+pub fn firmware_copier(cle: String, version: Value) -> Result<Value, String> {
+    cle_lisible(&cle)?;
+    let (url, nom, taille, sha256) = fichier(&version)?;
+    let octets = telecharger(&url, taille, &sha256)?;
+    ecrire_sur_cle(&cle, &nom, &octets)?;
+    let dossier = Path::new(&cle);
     for entree in fs::read_dir(dossier).into_iter().flatten().flatten() {
         let n = entree.file_name().to_string_lossy().into_owned();
         // les anciens firmwares, et les « ._ » que macOS crée à côté sur une clé FAT (le nôtre compris)

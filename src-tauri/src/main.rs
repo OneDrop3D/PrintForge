@@ -51,6 +51,7 @@ fn main() {
             imprimante::envoyer_fichier,
             imprimante::imprimer,
             musique::musique_envoyer,
+            musique::musique_cle,
             firmware::firmware_versions,
             firmware::firmware_cles,
             firmware::firmware_copier,

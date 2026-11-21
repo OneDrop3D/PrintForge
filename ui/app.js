@@ -200,7 +200,25 @@ $('#pas').value = memoire.lire('pf-pas') || 100;
 $('#pas').onchange = () => memoire.ecrire('pf-pas', $('#pas').value);
 $('#choisirMidi').onclick = async () => {
   const c = await choisir('MIDI', ['mid', 'midi'], $('#nomMidi'), $('#envoyerMidi'));
-  if (c) { midi = c; $('#lancerMidi').hidden = true; dire($('#msgMidi'), ''); }
+  if (c) { midi = c; $('#lancerMidi').hidden = true; $('#cleMidi').disabled = false; dire($('#msgMidi'), ''); }
+};
+// Sans réseau : le G-code de musique sur une clé USB de cet ordinateur, la première que l'imprimante pourra lire.
+$('#cleMidi').onclick = async (ev) => {
+  const pas = Number($('#pas').value), m = $('#msgMidi');
+  if (!(pas > 0)) return dire(m, 'Le nombre de pas par millimètre doit être un nombre positif.', 'ko');
+  const cles = await invoke('firmware_cles').catch(() => []);
+  const cle = cles.find((c) => !c.probleme);
+  if (!cle) return dire(m, cles.length ? `La clé « ${cles[0].nom} » ne convient pas : ${cles[0].probleme}.` : 'Branchez une clé USB sur cet ordinateur.', 'ko');
+  ev.target.disabled = true;
+  dire(m, `Écriture sur la clé « ${cle.nom} »…`);
+  try {
+    const r = await invoke('musique_cle', { chemin: midi, pasParMm: pas, cle: cle.chemin });
+    const fait = `« ${r.nom} » (${r.notes} notes, ${duree(r.duree)}) est sur la clé`;
+    dire(m, r.ejectee ? `${fait}, qui est éjectée : branchez-la sur l’imprimante et lancez le fichier depuis Imprimer.`
+      : r.ejectee === false ? `${fait}, mais elle n’a pas pu être éjectée : éjectez-la avant de la retirer.`
+      : `${fait} : éjectez-la, puis branchez-la sur l’imprimante et lancez le fichier depuis Imprimer.`, 'ok');
+  } catch (e) { dire(m, String(e), 'ko'); }
+  finally { ev.target.disabled = false; }
 };
 $('#envoyerMidi').onclick = (ev) => {
   const pas = Number($('#pas').value), jouer = $('#jouer').checked;
