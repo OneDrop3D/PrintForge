@@ -113,12 +113,12 @@
 
     <section class="carte">
       <h2>Relier l’imprimante</h2>
-      <p class="muet">L’imprimante et cet ordinateur doivent être sur le même réseau, avec PrusaLink activé sur l’imprimante : <b>Réglages › Réseau › PrusaLink</b>, qui affiche aussi le mot de passe.</p>
+      <p class="muet">L’imprimante et cet ordinateur doivent être sur le même réseau, avec PrusaLink activé sur l’imprimante (<b>Réglages › Réseau › PrusaLink</b>). Pour la relier, affichez un code sur l’imprimante : <b>Réglages › Fonctions OneDrop3D › Associer PrintForge</b>, puis saisissez-le ici. Avec le firmware officiel, saisissez plutôt le mot de passe de PrusaLink.</p>
       <div class="ligne"><button class="bouton" id="chercher">Chercher sur le réseau</button></div>
       <div class="ligne" id="trouvees"></div>
       <p class="message" id="msgChercher" role="status"></p>
       <label class="champ">Adresse de l’imprimante (IP ou nom)<input type="text" id="adresse" placeholder="192.168.1.50" autocomplete="off" spellcheck="false"></label>
-      <label class="champ">Mot de passe PrusaLink<input type="password" id="motDePasse" autocomplete="off"></label>
+      <label class="champ">Code à 6 chiffres (ou mot de passe PrusaLink)<input type="text" id="motDePasse" autocomplete="off" spellcheck="false" placeholder="123456"></label>
       <div class="ligne espace"><button class="bouton principal" id="enregistrer">Enregistrer et tester</button></div>
       <p class="message" id="msgRelier" role="status"></p>
     </section>

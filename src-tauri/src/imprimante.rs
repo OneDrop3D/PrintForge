@@ -118,10 +118,15 @@ pub fn imprimante_enregistrer(app: AppHandle, adresse: String, mot_de_passe: Str
     if adresse.is_empty() || !adresse.chars().all(|c| c.is_ascii_alphanumeric() || ".-:[]".contains(c)) {
         return Err("Adresse invalide : saisissez l’adresse IP de l’imprimante (par exemple 192.168.1.50) ou son nom.".into());
     }
-    // champ laissé vide : le mot de passe déjà enregistré est gardé
-    let mot_de_passe = match mot_de_passe.as_str() {
-        "" => config(&app)["mot_de_passe"].as_str().unwrap_or("").to_string(),
-        _ => mot_de_passe,
+    // champ laissé vide : le mot de passe déjà enregistré est gardé ; six chiffres : le code d'association affiché
+    // par l'imprimante (firmware OneDrop3D), échangé contre la vraie clé
+    let saisi = mot_de_passe.trim().to_string();
+    let mot_de_passe = if saisi.is_empty() {
+        config(&app)["mot_de_passe"].as_str().unwrap_or("").to_string()
+    } else if saisi.len() == 6 && saisi.chars().all(|c| c.is_ascii_digit()) {
+        associer(adresse, &saisi)?.unwrap_or(saisi) // firmware sans association : ce sont peut-être les six caractères du mot de passe
+    } else {
+        saisi
     };
     ecrire_config(&app, &json!({ "adresse": adresse, "mot_de_passe": mot_de_passe }))?;
     Imprimante::reliee(&app)?.lire("/api/version")
@@ -212,8 +217,64 @@ pub fn imprimer(app: AppHandle, nom: String) -> Result<(), String> {
     }
 }
 
+/// Échange le code d'association (Réglages › Fonctions OneDrop3D › Associer PrintForge) contre la clé PrusaLink.
+/// `None` : ce firmware ne connaît pas l'association (firmware officiel, ou OneDrop3D antérieur à 8.0.2.4).
+fn associer(adresse: &str, code: &str) -> Result<Option<String>, String> {
+    let r = ureq::http::Request::builder()
+        .method("POST")
+        .uri(format!("http://{adresse}/api/v1/od3d/pair/{code}"))
+        .header("Accept", "application/json")
+        .body(())
+        .map_err(|e| e.to_string())?;
+    let mut reponse = client(COURT).run(r).map_err(|e| {
+        format!("L’imprimante ne répond pas à l’adresse {adresse} : vérifiez qu’elle est allumée et sur le même réseau que cet ordinateur ({e}).")
+    })?;
+    match reponse.status().as_u16() {
+        200 => {
+            let v: Value = serde_json::from_str(&reponse.body_mut().read_to_string().unwrap_or_default()).unwrap_or_default();
+            match v["message"].as_str() {
+                Some(cle) if !cle.is_empty() => Ok(Some(cle.to_string())),
+                _ => Err("L’imprimante a accepté le code mais n’a pas envoyé de clé : réessayez avec un nouveau code.".into()),
+            }
+        }
+        403 => Err("Code refusé ou expiré : affichez un nouveau code sur l’imprimante (Réglages › Fonctions OneDrop3D › Associer PrintForge).".into()),
+        404 | 405 => Ok(None),
+        code => Err(format!("L’imprimante a refusé l’association (code {code}).")),
+    }
+}
+
 #[cfg(test)]
 mod tests {
+    /// Une fausse imprimante qui répond une fois `reponse` et rend la ligne de requête reçue.
+    fn fausse_imprimante(reponse: &'static str) -> (String, std::thread::JoinHandle<String>) {
+        use std::io::{Read, Write};
+        let ecoute = std::net::TcpListener::bind("127.0.0.1:0").unwrap();
+        let adresse = ecoute.local_addr().unwrap().to_string();
+        let fil = std::thread::spawn(move || {
+            let (mut flux, _) = ecoute.accept().unwrap();
+            let mut tampon = [0u8; 2048];
+            let n = flux.read(&mut tampon).unwrap();
+            flux.write_all(reponse.as_bytes()).unwrap();
+            String::from_utf8_lossy(&tampon[..n]).lines().next().unwrap_or_default().to_string()
+        });
+        (adresse, fil)
+    }
+
+    #[test]
+    fn association_par_code() {
+        let corps = r#"{"title": "200: OK","message":"cleTresLongue42"}"#;
+        let ok: &'static str = Box::leak(format!("HTTP/1.1 200 OK\r\nContent-Type: application/json\r\nContent-Length: {}\r\nConnection: close\r\n\r\n{corps}", corps.len()).into_boxed_str());
+        let (adresse, fil) = fausse_imprimante(ok);
+        assert_eq!(super::associer(&adresse, "123456").unwrap().as_deref(), Some("cleTresLongue42"));
+        assert_eq!(fil.join().unwrap(), "POST /api/v1/od3d/pair/123456 HTTP/1.1");
+
+        let (adresse, _) = fausse_imprimante("HTTP/1.1 403 Forbidden\r\nContent-Length: 0\r\nConnection: close\r\n\r\n");
+        assert!(super::associer(&adresse, "123456").unwrap_err().contains("Code refusé"));
+
+        let (adresse, _) = fausse_imprimante("HTTP/1.1 404 Not Found\r\nContent-Length: 0\r\nConnection: close\r\n\r\n");
+        assert_eq!(super::associer(&adresse, "123456").unwrap(), None);
+    }
+
     use super::{nom_sur, USB};
 
     #[test]
