@@ -1,9 +1,11 @@
 #![cfg_attr(not(debug_assertions), windows_subsystem = "windows")]
 /* OneDrop PrintForge : le compagnon des CORE One qui ont le firmware OneDrop3D. Un module par partie : l’imprimante
- * et l’envoi de fichiers (PrusaLink), la musique, le firmware (clé USB ou réseau), les mises à jour de l’application. */
+ * et l’envoi de fichiers (PrusaLink), la musique, le firmware (clé USB ou réseau), celui du MMU3 (port USB du MMU),
+ * les mises à jour de l’application. */
 mod firmware;
 mod imprimante;
 mod maj;
+mod mmu;
 mod musique;
 
 use sha2::{Digest, Sha256};
@@ -56,6 +58,9 @@ fn main() {
             firmware::firmware_cles,
             firmware::firmware_copier,
             firmware::firmware_reseau,
+            mmu::mmu_versions,
+            mmu::mmu_detecter,
+            mmu::mmu_flasher,
             maj::maj_verifier,
             maj::maj_installer
         ])

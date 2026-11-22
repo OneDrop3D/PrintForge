@@ -96,20 +96,24 @@ $('#enregistrer').onclick = async (ev) => {
 };
 
 /* ---------- Firmware ---------- */
-let versions = [];
-async function lireVersions() {
-  try { versions = await invoke('firmware_versions'); }
+// Les versions de l'imprimante ou du MMU dans leur liste : les nôtres, puis les officielles.
+let versions = [], versionsMmu = [];
+async function lireVersions(commande, liste, m, pour) {
+  let lues;
+  try { lues = await invoke(commande); }
   catch (e) {
-    $('#version').replaceChildren(new Option('Versions illisibles'));
-    return dire($('#msgVersions'), `Impossible de lire les versions sur GitHub : ${e}`, 'ko');
+    liste.replaceChildren(new Option('Versions illisibles'));
+    dire(m, `Impossible de lire les versions sur GitHub : ${e}`, 'ko');
+    return [];
   }
-  $('#version').replaceChildren(...[['OneDrop3D', 'OneDrop3D'], ['Prusa', 'Officiel Prusa']].map(([source, titre]) => {
+  liste.replaceChildren(...[['OneDrop3D', 'OneDrop3D'], ['Prusa', 'Officiel Prusa']].map(([source, titre]) => {
     const groupe = document.createElement('optgroup');
     groupe.label = titre;
-    versions.forEach((v, i) => { if (v.source === source) groupe.append(new Option(v.version + (v.beta ? ' (bêta)' : ''), i)); });
+    lues.forEach((v, i) => { if (v.source === source) groupe.append(new Option(v.version + (v.beta ? ' (bêta)' : ''), i)); });
     return groupe;
   }));
-  if (!versions.length) dire($('#msgVersions'), 'Aucune version n’est publiée pour la CORE One.', 'ko');
+  if (!lues.length) dire(m, `Aucune version n’est publiée pour ${pour}.`, 'ko');
+  return lues;
 }
 const versionChoisie = () => versions[$('#version').value];
 
@@ -158,6 +162,37 @@ $('#reseau').onclick = async (ev) => {
     dire(m, `Installé : l’imprimante a maintenant le firmware ${r.firmware}.`, 'ok');
   } catch (e) { dire(m, String(e), 'ko'); }
   finally { ev.target.disabled = false; }
+};
+
+/* ---------- MMU3 ---------- */
+const ETATS_MMU = { absent: 'Aucun MMU relié à cet ordinateur.', firmware: 'MMU3 relié.',
+  chargeur: 'MMU3 relié, dans son mode de mise à jour.', plusieurs: 'Plusieurs MMU sont reliés : n’en gardez qu’un.' };
+let flashMmu = false;
+async function surveillerMmu() {
+  if (!visible('firmware') || flashMmu) return;
+  let etat;
+  try { etat = await invoke('mmu_detecter'); } catch { return; }
+  $('#mmu').textContent = ETATS_MMU[etat];
+  $('#flasherMmu').hidden = etat !== 'firmware' && etat !== 'chargeur';
+}
+setInterval(surveillerMmu, 2000);
+
+$('#flasherMmu').onclick = async (ev) => {
+  const v = versionsMmu[$('#versionMmu').value], m = $('#msgMmu'), barre = $('#progresMmu');
+  if (!v) return dire(m, 'Les versions ne sont pas encore lues.', 'ko');
+  const oui = await T.dialog.ask(`Installer ${v.version} sur le MMU ? Ne débranchez ni le câble USB ni l’imprimante pendant l’installation.`,
+    { title: 'OneDrop PrintForge', kind: 'warning', okLabel: 'Installer', cancelLabel: 'Annuler' });
+  if (!oui) return;
+  flashMmu = true; ev.target.disabled = true; barre.value = 0; barre.hidden = false;
+  const fin = await T.event.listen('mmu', ({ payload: p }) => {
+    if (p.texte) dire(m, p.texte);
+    if (p.total) barre.value = p.fait / p.total;
+  });
+  try {
+    const r = await invoke('mmu_flasher', { version: v });
+    dire(m, `${v.version} est installé et relu sans erreur${r.redemarre ? ', et le MMU a redémarré' : ''}. Débranchez le câble USB. Si l’imprimante affiche une erreur du MMU, redémarrez-la : elle relira sa version (Info › Infos Version).`, 'ok');
+  } catch (e) { dire(m, String(e), 'ko'); }
+  finally { fin(); flashMmu = false; ev.target.disabled = false; barre.hidden = true; }
 };
 
 /* ---------- Envoyer ---------- */
@@ -262,5 +297,6 @@ $('#majInstaller').onclick = async (ev) => {
 T.app.getVersion().then((v) => { versionApp = v; $('#versionApp').textContent = ` · ${v}`; }).catch(() => {});
 ouvrir(VUES.find((v) => v === memoire.lire('pf-vue')) || 'imprimante');
 lireConfig(true).then(lireEtat).catch((e) => dire($('#msgEtat'), String(e), 'ko'));
-lireVersions();
+lireVersions('firmware_versions', $('#version'), $('#msgVersions'), 'la CORE One').then((l) => { versions = l; });
+lireVersions('mmu_versions', $('#versionMmu'), $('#msgMmu'), 'le MMU3').then((l) => { versionsMmu = l; });
 verifierMaj(false);

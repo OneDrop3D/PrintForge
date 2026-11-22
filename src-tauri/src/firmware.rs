@@ -25,8 +25,13 @@ fn coreone(source: &str, nom: &str) -> bool {
 /// Les nôtres d’abord, puis les officiels. Seuls les fichiers dont GitHub donne l’empreinte sont proposés.
 #[tauri::command(async)]
 pub fn firmware_versions() -> Result<Vec<Value>, String> {
-    let mut versions = vec![];
-    for (source, depot) in DEPOTS {
+    versions(&DEPOTS, coreone)
+}
+
+/// Les fichiers que `garder(source, nom)` retient dans les releases de ces dépôts (le firmware de l’imprimante ou du MMU).
+pub(crate) fn versions(depots: &[(&str, &str)], garder: fn(&str, &str) -> bool) -> Result<Vec<Value>, String> {
+    let mut lues = vec![];
+    for (source, depot) in depots {
         let mut r = client(Duration::from_secs(30))
             .get(format!("https://api.github.com/repos/{depot}/releases?per_page=50"))
             .call()
@@ -36,10 +41,19 @@ pub fn firmware_versions() -> Result<Vec<Value>, String> {
         }
         let releases: Value = serde_json::from_str(&r.body_mut().read_to_string().map_err(|e| e.to_string())?)
             .map_err(|_| "Liste des versions illisible.".to_string())?;
+        lues.push((*source, releases));
+    }
+    Ok(retenir(&lues, garder))
+}
+
+/// Les fichiers retenus des releases lues, chaque source dans l’ordre des dépôts.
+pub(crate) fn retenir(lues: &[(&str, Value)], garder: fn(&str, &str) -> bool) -> Vec<Value> {
+    let mut versions = vec![];
+    for (source, releases) in lues {
         for rel in releases.as_array().into_iter().flatten() {
             for a in rel["assets"].as_array().into_iter().flatten() {
                 let (nom, empreinte) = (a["name"].as_str().unwrap_or(""), a["digest"].as_str().unwrap_or(""));
-                if coreone(source, nom) && empreinte.starts_with("sha256:") {
+                if garder(source, nom) && empreinte.starts_with("sha256:") {
                     versions.push(json!({
                         "source": source, "version": rel["tag_name"], "beta": rel["prerelease"], "nom": nom,
                         "url": a["browser_download_url"], "taille": a["size"], "sha256": &empreinte[7..]
@@ -50,9 +64,9 @@ pub fn firmware_versions() -> Result<Vec<Value>, String> {
     }
     // GitHub ne range pas les releases dans l'ordre des versions (od3d-8.0.2.10 arrivait après la .4) :
     // OneDrop3D d'abord, puis la plus récente d'abord dans chaque source.
-    let rang = |v: &Value| DEPOTS.iter().position(|(s, _)| v["source"] == *s).unwrap_or(usize::MAX);
+    let rang = |v: &Value| lues.iter().position(|(s, _)| v["source"] == *s).unwrap_or(usize::MAX);
     versions.sort_by(|a, b| rang(a).cmp(&rang(b)).then_with(|| numeros(b).cmp(&numeros(a))));
-    Ok(versions)
+    versions
 }
 
 /// « od3d-8.0.2.10 » → ([8, 0, 2, 10], finale) ; « v6.4.0-RC2 » → ([6, 4, 0], bêta) : comparées en nombres, la finale avant ses bêtas.
@@ -85,10 +99,10 @@ mod tests {
 }
 
 /// Le fichier d’une version reçue de la page (url, nom, taille, sha256), seulement s’il vient d’une release du firmware.
-fn fichier(v: &Value) -> Result<(String, String, u64, String), String> {
+pub(crate) fn fichier(depots: &[(&str, &str)], garder: fn(&str, &str) -> bool, v: &Value) -> Result<(String, String, u64, String), String> {
     let (source, url, nom) = (v["source"].as_str().unwrap_or(""), v["url"].as_str().unwrap_or(""), v["nom"].as_str().unwrap_or(""));
-    let depot = DEPOTS.iter().find(|(s, _)| *s == source).map(|(_, d)| format!("https://github.com/{d}/releases/download/"));
-    if !(depot.is_some_and(|d| url.starts_with(&d)) && !nom.contains(['/', '\\']) && coreone(source, nom)) {
+    let depot = depots.iter().find(|(s, _)| *s == source).map(|(_, d)| format!("https://github.com/{d}/releases/download/"));
+    if !(depot.is_some_and(|d| url.starts_with(&d)) && !nom.contains(['/', '\\']) && garder(source, nom)) {
         return Err("Ce fichier ne fait pas partie des versions du firmware.".into());
     }
     Ok((url.into(), nom.into(), v["taille"].as_u64().unwrap_or(0), v["sha256"].as_str().unwrap_or("").into()))
@@ -202,7 +216,7 @@ pub(crate) fn ecrire_sur_cle(cle: &str, nom: &str, octets: &[u8]) -> Result<(), 
 #[tauri::command(async)]
 pub fn firmware_copier(cle: String, version: Value) -> Result<Value, String> {
     cle_lisible(&cle)?;
-    let (url, nom, taille, sha256) = fichier(&version)?;
+    let (url, nom, taille, sha256) = fichier(&DEPOTS, coreone, &version)?;
     let octets = telecharger(&url, taille, &sha256)?;
     ecrire_sur_cle(&cle, &nom, &octets)?;
     let dossier = Path::new(&cle);
@@ -220,7 +234,7 @@ pub fn firmware_copier(cle: String, version: Value) -> Result<Value, String> {
 #[tauri::command(async)]
 pub fn firmware_reseau(app: AppHandle, version: Value) -> Result<Value, String> {
     let imprimante = Imprimante::reliee(&app)?;
-    let (url, _, taille, sha256) = fichier(&version)?;
+    let (url, _, taille, sha256) = fichier(&DEPOTS, coreone, &version)?;
     let etat = imprimante.lire("/api/v1/status")?["printer"]["state"].as_str().unwrap_or("").to_string();
     if !["IDLE", "READY", "FINISHED", "STOPPED"].contains(&etat.as_str()) {
         return Err(format!("Installation refusée : l’imprimante doit être au repos, sans impression en cours (état : {etat})."));

@@ -1,6 +1,6 @@
 [package]
 name = "printforge"
-version = "0.1.5"
+version = "0.1.6"
 description = "OneDrop PrintForge : firmware, fichiers et musique pour la Prusa CORE One"
 edition = "2021"
 
@@ -17,6 +17,8 @@ mdns-sd = "0.22"
 sha2 = "0.10"
 # sans « parallel » : il tirerait rayon pour des fichiers de quelques kilo-octets
 midly = { version = "0.5", default-features = false, features = ["std"] }
+# le flash du MMU3 par son port USB ; sans libudev, que Linux seul demanderait
+serialport = { version = "4.10", default-features = false }
 
 [target.'cfg(target_os = "macos")'.dependencies]
 plist = "1"

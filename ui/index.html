@@ -64,6 +64,7 @@
   .message:empty { display: none; }
   .message.ok { color: var(--ok); font-weight: 600; }
   .message.ko { color: var(--ko); font-weight: 600; }
+  progress { display: block; width: 100%; max-width: 360px; margin-top: 12px; accent-color: var(--orange); }
   .alerte { border-left: 3px solid var(--ko); padding: 6px 10px; background: var(--bg); border-radius: 0 8px 8px 0; font-size: 13px; }
   dl.etat { display: grid; grid-template-columns: max-content 1fr; gap: 4px 18px; margin: 0; }
   dl.etat dt { color: var(--muet); }
@@ -159,6 +160,20 @@
       </ol>
       <p class="muet">La clé doit être en FAT32 avec le schéma MBR. Sur Mac : Utilitaire de disque › Présentation › Afficher tous les appareils, choisissez la clé elle-même puis Effacer, avec « MS-DOS (FAT) » et « Master Boot Record ». Sur Windows : clic droit sur la clé › Formater › FAT32 (clé de 32 Go au plus).</p>
       <div class="ligne"><button class="bouton" data-lien="https://help.prusa3d.com/article/flashing-custom-firmware-core-one-l-core-one-mk4-s-mk3-9-s-mk3-5-s_814967">Article Prusa, avec la photo du sceau</button></div>
+    </section>
+
+    <section class="carte">
+      <h2>Firmware du MMU3</h2>
+      <p class="muet">Le firmware OneDrop3D du MMU active les commandes de la poulie (Axes du MMU). Les versions « Officiel Prusa » servent à revenir en arrière. PrintForge l’installe par le port USB du MMU, comme PrusaSlicer, puis relit tout ce qu’il a écrit.</p>
+      <ol>
+        <li>Laissez le MMU branché sur l’imprimante, allumée et au repos : c’est elle qui l’alimente.</li>
+        <li>Reliez le port micro-USB de la carte du MMU à cet ordinateur, avec un câble qui transmet les données (pas un câble de charge seule).</li>
+        <li>Choisissez la version, puis « Installer sur le MMU ». Ne débranchez rien avant la fin, moins d’une minute.</li>
+      </ol>
+      <label class="champ">Version<select id="versionMmu"><option>Lecture des versions sur GitHub…</option></select></label>
+      <div class="ligne espace"><span id="mmu">Recherche du MMU…</span><button class="bouton principal" id="flasherMmu" hidden>Installer sur le MMU</button></div>
+      <progress id="progresMmu" max="1" value="0" hidden></progress>
+      <p class="message" id="msgMmu" role="status"></p>
     </section>
   </div>
 </main>
