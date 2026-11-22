@@ -21,6 +21,8 @@ function ouvrir(vue) {
   for (const v of VUES) $('#' + v).hidden = v !== vue;
   memoire.ecrire('pf-vue', vue);
   lireEtat();
+  // Une nouvelle version a pu sortir depuis l'ouverture de l'application : liste relue si elle a plus de 5 min
+  if (vue === 'firmware' && Date.now() - versionsLues > 5 * 60e3) actualiserVersions();
 }
 for (const b of document.querySelectorAll('[data-vue]')) b.onclick = () => ouvrir(b.dataset.vue);
 
@@ -116,6 +118,27 @@ async function lireVersions(commande, liste, m, pour) {
   return lues;
 }
 const versionChoisie = () => versions[$('#version').value];
+
+// Les deux listes relues ensemble (bouton « Actualiser la liste », ou onglet ouvert après 5 min) ; jamais pendant une
+// copie ou un flash, qui gardent la version choisie au départ
+let versionsLues = 0;
+async function actualiserVersions() {
+  if (occupe || flashMmu) return;
+  versionsLues = Date.now();
+  const boutons = [$('#actualiserVersions'), $('#actualiserMmu')];
+  for (const b of boutons) b.disabled = true;
+  dire($('#msgVersions'), ''); dire($('#msgMmu'), '');
+  [versions, versionsMmu] = await Promise.all([
+    lireVersions('firmware_versions', $('#version'), $('#msgVersions'), 'la CORE One'),
+    lireVersions('mmu_versions', $('#versionMmu'), $('#msgMmu'), 'le MMU3'),
+  ]);
+  for (const b of boutons) b.disabled = false;
+  const heure = new Date().toLocaleTimeString('fr-FR', { hour: '2-digit', minute: '2-digit' });
+  if (versions.length) dire($('#msgVersions'), `Liste lue à ${heure}.`);
+  if (versionsMmu.length) dire($('#msgMmu'), `Liste lue à ${heure}.`);
+}
+$('#actualiserVersions').onclick = actualiserVersions;
+$('#actualiserMmu').onclick = actualiserVersions;
 
 let occupe = false;
 async function copier(cle) {
@@ -297,6 +320,5 @@ $('#majInstaller').onclick = async (ev) => {
 T.app.getVersion().then((v) => { versionApp = v; $('#versionApp').textContent = ` · ${v}`; }).catch(() => {});
 ouvrir(VUES.find((v) => v === memoire.lire('pf-vue')) || 'imprimante');
 lireConfig(true).then(lireEtat).catch((e) => dire($('#msgEtat'), String(e), 'ko'));
-lireVersions('firmware_versions', $('#version'), $('#msgVersions'), 'la CORE One').then((l) => { versions = l; });
-lireVersions('mmu_versions', $('#versionMmu'), $('#msgMmu'), 'le MMU3').then((l) => { versionsMmu = l; });
+if (!versionsLues) actualiserVersions(); // déjà lancée si l'application rouvre sur l'onglet Firmware
 verifierMaj(false);

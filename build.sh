@@ -19,7 +19,10 @@ fi
 if [ "$1" = "mac" ]; then
   V=$(python3 -c 'import json; print(json.load(open("src-tauri/tauri.conf.json"))["version"])')
   mkdir -p dist && rm -f "dist/OneDrop-PrintForge-$V-mac-arm64.dmg"
-  hdiutil create -quiet -volname "OneDrop PrintForge" -srcfolder "$APP" -format UDZO "dist/OneDrop-PrintForge-$V-mac-arm64.dmg" || exit 1
+  # L'application et un raccourci vers Applications côte à côte : on glisse l'une sur l'autre, sans ouvrir de Finder
+  PILE=$(mktemp -d) && cp -R "$APP" "$PILE/" && ln -s /Applications "$PILE/Applications" || exit 1
+  hdiutil create -quiet -volname "OneDrop PrintForge" -srcfolder "$PILE" -format UDZO "dist/OneDrop-PrintForge-$V-mac-arm64.dmg"
+  OK=$?; rm -rf "$PILE"; [ $OK -eq 0 ] || exit 1
   echo "installeur : dist/OneDrop-PrintForge-$V-mac-arm64.dmg"
 fi
 if [ "$1" = "--installer" ]; then

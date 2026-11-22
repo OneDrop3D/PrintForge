@@ -132,6 +132,7 @@
       <h2>Version à installer</h2>
       <p class="muet">Le firmware OneDrop3D part du dernier firmware officiel de Prusa et y ajoute nos fonctions. Les versions « Officiel Prusa » servent à revenir en arrière.</p>
       <label class="champ">Version<select id="version"><option>Lecture des versions sur GitHub…</option></select></label>
+      <div class="ligne"><button class="bouton" id="actualiserVersions">Actualiser la liste</button></div>
       <p class="message" id="msgVersions" role="status"></p>
     </section>
 
@@ -171,6 +172,7 @@
         <li>Choisissez la version, puis « Installer sur le MMU ». Ne débranchez rien avant la fin, moins d’une minute.</li>
       </ol>
       <label class="champ">Version<select id="versionMmu"><option>Lecture des versions sur GitHub…</option></select></label>
+      <div class="ligne"><button class="bouton" id="actualiserMmu">Actualiser la liste</button></div>
       <div class="ligne espace"><span id="mmu">Recherche du MMU…</span><button class="bouton principal" id="flasherMmu" hidden>Installer sur le MMU</button></div>
       <progress id="progresMmu" max="1" value="0" hidden></progress>
       <p class="message" id="msgMmu" role="status"></p>

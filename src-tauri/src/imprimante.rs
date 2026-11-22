@@ -252,10 +252,20 @@ mod tests {
         let adresse = ecoute.local_addr().unwrap().to_string();
         let fil = std::thread::spawn(move || {
             let (mut flux, _) = ecoute.accept().unwrap();
-            let mut tampon = [0u8; 2048];
-            let n = flux.read(&mut tampon).unwrap();
+            flux.set_read_timeout(Some(std::time::Duration::from_secs(2))).unwrap();
+            // Toute la requête, puis une fermeture propre : sous Windows, fermer une connexion dont on n'a pas tout lu la
+            // coupe net (os error 10053) avant que le client ait lu la réponse (CI build.yml du 22/11)
+            let (mut recu, mut tampon) = (Vec::new(), [0u8; 2048]);
+            while !recu.windows(4).any(|w| w == b"\r\n\r\n") {
+                match flux.read(&mut tampon) {
+                    Ok(0) | Err(_) => break,
+                    Ok(n) => recu.extend_from_slice(&tampon[..n]),
+                }
+            }
             flux.write_all(reponse.as_bytes()).unwrap();
-            String::from_utf8_lossy(&tampon[..n]).lines().next().unwrap_or_default().to_string()
+            let _ = flux.shutdown(std::net::Shutdown::Write);
+            let _ = flux.read_to_end(&mut Vec::new()); // jusqu'à ce que le client ferme
+            String::from_utf8_lossy(&recu).lines().next().unwrap_or_default().to_string()
         });
         (adresse, fil)
     }

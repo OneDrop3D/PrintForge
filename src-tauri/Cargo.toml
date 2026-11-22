@@ -1,6 +1,6 @@
 [package]
 name = "printforge"
-version = "0.1.6"
+version = "0.1.7"
 description = "OneDrop PrintForge : firmware, fichiers et musique pour la Prusa CORE One"
 edition = "2021"
 
