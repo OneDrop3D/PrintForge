@@ -29,17 +29,20 @@ pub fn mmu_versions() -> Result<Vec<Value>, String> {
     versions(&DEPOTS, mmu3)
 }
 
-/// Les MMU reliés à cet ordinateur : (port, 3 pour le chargeur ou 4 pour le firmware).
+/// Un port série du MMU : (port, 3 pour le chargeur ou 4 pour le firmware). macOS donne chaque port deux fois, cu. et
+/// tty. : seul cu. est gardé.
+fn mmu(p: serialport::SerialPortInfo) -> Option<(String, u16)> {
+    match p.port_type {
+        SerialPortType::UsbPort(u) if u.vid == PRUSA && [CHARGEUR, FIRMWARE].contains(&u.pid) && !p.port_name.starts_with("/dev/tty.") => {
+            Some((p.port_name, u.pid))
+        }
+        _ => None,
+    }
+}
+
+/// Les MMU reliés à cet ordinateur.
 fn mmus() -> Vec<(String, u16)> {
-    serialport::available_ports()
-        .unwrap_or_default()
-        .into_iter()
-        .filter(|p| !p.port_name.starts_with("/dev/tty.")) // macOS donne chaque port deux fois : cu. et tty.
-        .filter_map(|p| match p.port_type {
-            SerialPortType::UsbPort(u) if u.vid == PRUSA && [CHARGEUR, FIRMWARE].contains(&u.pid) => Some((p.port_name, u.pid)),
-            _ => None,
-        })
-        .collect()
+    serialport::available_ports().unwrap_or_default().into_iter().filter_map(mmu).collect()
 }
 
 #[tauri::command(async)]
@@ -73,7 +76,12 @@ fn dire(app: &AppHandle, texte: &str) {
 /// Le port du chargeur : le MMU qui tourne y est renvoyé en ouvrant son port à 1200 bauds (avr109_reboot de PrusaSlicer).
 fn chargeur(app: &AppHandle) -> Result<String, String> {
     let port = match &mmus()[..] {
-        [] => return Err("Aucun MMU relié : reliez le port micro-USB de la carte du MMU à cet ordinateur, imprimante allumée, avec un câble qui transmet les données.".into()),
+        // Mode de secours, comme PrusaSlicer (avr109_lookup_port) : un MMU dont le firmware n’apparaît pas en USB passe
+        // dans son chargeur par son bouton reset, qui y reste quelques secondes
+        [] => {
+            dire(app, "Aucun MMU vu : appuyez maintenant sur le bouton reset du MMU, à côté de son port USB (30 s)…");
+            return attendre(CHARGEUR, 30).ok_or_else(|| "Aucun MMU vu, même après le reset : rien n’a été écrit. Reliez le port micro-USB de la carte du MMU à cet ordinateur avec un câble qui transmet les données (pas un câble de charge seule), imprimante allumée, puis réessayez.".into());
+        }
         [(port, CHARGEUR)] => return Ok(port.clone()),
         [(port, _)] => port.clone(),
         _ => return Err("Plusieurs MMU sont reliés à cet ordinateur : n’en gardez qu’un.".into()),
@@ -112,7 +120,7 @@ pub fn mmu_flasher(app: AppHandle, version: Value) -> Result<Value, String> {
         sleep(Duration::from_millis(400));
     }
     let mut p = ouvert.map_err(|e| format!("Le port du MMU ne s’ouvre pas ({e}). {REPRISE}"))?;
-    let _ = p.clear(serialport::ClearBuffer::Input);
+    p.vider();
     flasher(&mut p, &image, &pages, |fait, total| {
         let _ = app.emit("mmu", json!({ "fait": fait, "total": total }));
     })
@@ -163,27 +171,57 @@ fn lire_hex(texte: &str) -> Result<(Vec<u8>, Vec<usize>), String> {
     Err(illisible()) // pas d’enregistrement de fin : fichier tronqué
 }
 
-fn muet(e: std::io::Error) -> String {
-    format!("Le MMU ne répond plus ({e}).")
+/// Le port du chargeur. Caterina traite une commande par paquet USB et jette le reste du paquet : chaque commande part
+/// donc dans sa propre écriture, comme avrdude.
+trait Port: Read + Write {
+    /// Oublie ce qui a été reçu (butterfly_drain d’avrdude)
+    fn vider(&mut self);
 }
 
-fn lire<P: Read>(port: &mut P, n: usize) -> Result<Vec<u8>, String> {
+impl Port for Box<dyn serialport::SerialPort> {
+    fn vider(&mut self) {
+        let _ = self.clear(serialport::ClearBuffer::Input);
+    }
+}
+
+/// `n` octets de la réponse à la commande `c`.
+fn lire<P: Read>(port: &mut P, n: usize, c: u8) -> Result<Vec<u8>, String> {
     let mut v = vec![0; n];
-    port.read_exact(&mut v).map_err(muet)?;
+    port.read_exact(&mut v).map_err(|e| format!("Le chargeur du MMU ne répond pas à la commande « {} » ({e}).", c as char))?;
     Ok(v)
 }
 
 fn envoyer<P: Write>(port: &mut P, octets: &[u8]) -> Result<(), String> {
-    port.write_all(octets).and_then(|_| port.flush()).map_err(muet)
+    port.write_all(octets)
+        .and_then(|_| port.flush())
+        .map_err(|e| format!("Envoi de la commande « {} » au MMU impossible ({e}).", octets[0] as char))
 }
 
 /// Une commande AVR109 à laquelle le chargeur répond par un retour chariot.
 fn commande<P: Read + Write>(port: &mut P, octets: &[u8]) -> Result<(), String> {
     envoyer(port, octets)?;
-    match lire(port, 1)?[..] {
+    match lire(port, 1, octets[0])?[..] {
         [b'\r'] => Ok(()),
         _ => Err(format!("Le chargeur du MMU a refusé la commande « {} ».", octets[0] as char)),
     }
+}
+
+/// Le nom du chargeur (7 lettres), demandé comme avrdude : Échap seul, vidage, puis « S », répété tant qu’il répond « ? ».
+/// Un chargeur qui vient d’apparaître peut manquer les premières demandes : jusqu’à 5 essais.
+fn identifier<P: Port>(port: &mut P) -> Result<Vec<u8>, String> {
+    let mut erreur = String::new();
+    for _ in 0..5 {
+        envoyer(port, b"\x1b")?;
+        sleep(Duration::from_millis(50));
+        port.vider();
+        envoyer(port, b"S")?;
+        match lire(port, 1, b'S') {
+            Ok(c) if c != [b'?'] => return Ok([c, lire(port, 6, b'S')?].concat()),
+            Ok(_) => erreur = "Le chargeur du MMU ne reconnaît pas la commande « S ».".into(),
+            Err(e) => erreur = e,
+        }
+    }
+    Err(erreur)
 }
 
 /// « A » : l’adresse en mots de 16 bits, poids fort d’abord.
@@ -205,28 +243,27 @@ fn lecture(n: usize) -> [u8; 4] {
 }
 
 /// La présentation d’avrdude (butterfly_initialize), dans son ordre, puis la signature de l’ATmega32U4.
-fn presenter<P: Read + Write>(port: &mut P) -> Result<(), String> {
-    envoyer(port, b"\x1bS")?; // Échap réveille les chargeurs « butterfly », Caterina l’ignore ; S : son nom en 7 lettres
-    lire(port, 7)?;
+fn presenter<P: Port>(port: &mut P) -> Result<(), String> {
+    let nom = identifier(port)?;
     envoyer(port, b"V")?;
-    lire(port, 2)?;
+    lire(port, 2, b'V')?;
     envoyer(port, b"v")?;
-    if lire(port, 1)? != [b'?'] {
-        lire(port, 1)?;
+    if lire(port, 1, b'v')? != [b'?'] {
+        lire(port, 1, b'v')?;
     }
     envoyer(port, b"p")?;
-    lire(port, 1)?;
+    lire(port, 1, b'p')?;
     envoyer(port, b"a")?;
-    lire(port, 1)?;
+    lire(port, 1, b'a')?;
     envoyer(port, b"b")?;
-    let b = lire(port, 3)?;
+    let b = lire(port, 3, b'b')?;
     if b[0] != b'Y' || (u16::from_be_bytes([b[1], b[2]]) as usize) < PAGE {
         return Err("Le chargeur du MMU n’écrit pas par pages : rien n’a été écrit.".into());
     }
     envoyer(port, b"t")?;
     let mut appareil = None;
     loop {
-        match lire(port, 1)?[0] {
+        match lire(port, 1, b't')?[0] {
             0 => break,
             c => {
                 appareil.get_or_insert(c);
@@ -234,9 +271,11 @@ fn presenter<P: Read + Write>(port: &mut P) -> Result<(), String> {
         }
     }
     commande(port, &[b'T', appareil.unwrap_or(0)])?;
-    commande(port, b"P")?;
+    // Le chargeur « MMCTL20 » des MMU3 récents veut « P » suivi de son nom (mmu2_bootloader.cpp du firmware Prusa) ; dans le
+    // même paquet, un chargeur qui ne lit que « P » jette le reste
+    commande(port, if nom == b"MMCTL20" { b"PMMCTL20" } else { b"P" })?;
     envoyer(port, b"s")?;
-    if lire(port, 3)? != [0x87, 0x95, 0x1E] {
+    if lire(port, 3, b's')? != [0x87, 0x95, 0x1E] {
         return Err("Ce n’est pas la puce d’un MMU3 (signature inattendue) : rien n’a été écrit.".into());
     }
     Ok(())
@@ -250,12 +289,12 @@ fn ecrire_page<P: Read + Write>(port: &mut P, page: usize, octets: &[u8]) -> Res
 fn relire_page<P: Read + Write>(port: &mut P, page: usize) -> Result<Vec<u8>, String> {
     commande(port, &adresse(page * PAGE))?;
     envoyer(port, &lecture(PAGE))?;
-    lire(port, PAGE)
+    lire(port, PAGE, b'g')
 }
 
 /// Les pages écrites puis relues. La première est effacée d’abord et écrite en dernier : tant qu’elle est vide, Caterina
 /// ne lance pas de firmware et reste dans son chargeur sans délai, si bien qu’une installation interrompue se relance.
-fn flasher<P: Read + Write>(port: &mut P, image: &[u8], pages: &[usize], mut avance: impl FnMut(usize, usize)) -> Result<(), String> {
+fn flasher<P: Port>(port: &mut P, image: &[u8], pages: &[usize], mut avance: impl FnMut(usize, usize)) -> Result<(), String> {
     presenter(port)?;
     ecrire_page(port, 0, &[0xFF; PAGE])?;
     let autres: Vec<usize> = pages.iter().copied().filter(|&p| p != 0).collect();
@@ -318,45 +357,73 @@ mod tests {
     }
 
     #[test]
+    fn reconnait_le_mmu_et_son_chargeur() {
+        let port = |nom: &str, vid, pid| serialport::SerialPortInfo {
+            port_name: nom.into(),
+            port_type: SerialPortType::UsbPort(serialport::UsbPortInfo { vid, pid, serial_number: None, manufacturer: None, product: None }),
+        };
+        assert_eq!(mmu(port("/dev/cu.usbmodem1101", 0x2c99, 4)), Some(("/dev/cu.usbmodem1101".into(), FIRMWARE)));
+        // le chargeur seul, entré par le bouton reset : le mode de secours
+        assert_eq!(mmu(port("/dev/cu.usbmodem1101", 0x2c99, 3)), Some(("/dev/cu.usbmodem1101".into(), CHARGEUR)));
+        assert_eq!(mmu(port("/dev/tty.usbmodem1101", 0x2c99, 4)), None, "doublon tty. de macOS");
+        assert_eq!(mmu(port("/dev/cu.usbmodem1101", 0x2341, 0x36)), None, "Caterina d’une autre carte");
+        assert_eq!(mmu(port("/dev/cu.usbmodem1101", 0x2c99, 7)), None, "autre appareil Prusa");
+        assert_eq!(mmu(serialport::SerialPortInfo { port_name: "/dev/cu.Bluetooth-Incoming-Port".into(), port_type: SerialPortType::PciPort }), None);
+    }
+
+    #[test]
     fn trames_avr109() {
         assert_eq!(adresse(0x6F80), [b'A', 0x37, 0xC0]);
         assert_eq!(bloc(&[1, 2]), [b'B', 0, 2, b'F', 1, 2]);
         assert_eq!(lecture(PAGE), [b'g', 0, 0x80, b'F']);
     }
 
-    /// Un chargeur Caterina simulé : il répond comme Caterina.c et garde l’ordre des pages écrites.
+    /// Un chargeur Caterina simulé, paquet USB par paquet USB (16 octets, CDC_TXRX_EPSIZE) : comme Caterina.c, il lit une
+    /// commande et ses arguments, quitte à attendre le paquet suivant, puis jette le reste du paquet en cours
+    /// (Endpoint_ClearOUT). `mmctl` : le chargeur « MMCTL20 », qui veut « P » suivi de son nom.
     struct Caterina {
         flash: Vec<u8>,
-        recu: Vec<u8>,
+        paquets: VecDeque<Vec<u8>>,
         reponse: VecDeque<u8>,
         adresse: usize,
         ecrites: Vec<(usize, u8)>,
         panne: Option<usize>,
+        mmctl: bool,
     }
 
     impl Caterina {
         fn new() -> Self {
-            Caterina { flash: vec![0x55; APPLI], recu: vec![], reponse: VecDeque::new(), adresse: 0, ecrites: vec![], panne: None }
+            Caterina { flash: vec![0x55; APPLI], paquets: VecDeque::new(), reponse: VecDeque::new(), adresse: 0, ecrites: vec![], panne: None, mmctl: false }
+        }
+    }
+
+    impl Port for Caterina {
+        fn vider(&mut self) {
+            self.reponse.clear();
         }
     }
 
     impl Write for Caterina {
         fn write(&mut self, o: &[u8]) -> io::Result<usize> {
-            self.recu.extend_from_slice(o);
+            self.paquets.extend(o.chunks(16).map(<[u8]>::to_vec));
             loop {
-                let r = self.recu.clone();
+                let r: Vec<u8> = self.paquets.iter().flatten().copied().collect();
                 let taille = |i: usize| (r[i] as usize) << 8 | r[i + 1] as usize;
+                let nom: &[u8] = if self.mmctl { b"MMCTL20" } else { b"CATERIN" };
                 let (lu, rep): (usize, Vec<u8>) = match r[..] {
                     [] => break,
                     [0x1b, ..] => (1, vec![]),
-                    [b'S', ..] => (1, b"CATERIN".to_vec()),
+                    [b'S', ..] => (1, nom.to_vec()),
                     [b'V', ..] => (1, b"10".to_vec()),
-                    [b'v', ..] => (1, b"?".to_vec()),
                     [b'p', ..] => (1, b"S".to_vec()),
                     [b'a', ..] => (1, b"Y".to_vec()),
                     [b'b', ..] => (1, vec![b'Y', 0, 128]),
                     [b't', ..] => (1, vec![0x44, 0]),
-                    [b'T', _, ..] | [b'P' | b'L' | b'E', ..] => (if r[0] == b'T' { 2 } else { 1 }, b"\r".to_vec()),
+                    [b'T', _, ..] => (2, b"\r".to_vec()),
+                    [b'P', ..] if self.mmctl && r.len() < 8 => break,
+                    [b'P', ..] if self.mmctl && r[1..8] != *b"MMCTL20" => (8, b"?".to_vec()),
+                    [b'P', ..] if self.mmctl => (8, b"\r".to_vec()),
+                    [b'P' | b'L' | b'E', ..] => (1, b"\r".to_vec()),
                     [b's', ..] => (1, vec![0x87, 0x95, 0x1E]),
                     [b'A', h, l, ..] => {
                         self.adresse = (h as usize) << 9 | (l as usize) << 1;
@@ -377,9 +444,22 @@ mod tests {
                         self.adresse += n;
                         (4, self.flash[self.adresse - n..self.adresse].to_vec())
                     }
-                    _ => break, // commande pas encore complète
+                    [b'T' | b'A' | b'B' | b'g', ..] => break, // arguments pas encore arrivés
+                    _ => (1, b"?".to_vec()),
                 };
-                self.recu.drain(..lu);
+                // la commande et ses arguments, puis le reste de son dernier paquet
+                let mut reste = lu;
+                while let Some(p) = self.paquets.front_mut() {
+                    if reste < p.len() {
+                        self.paquets.pop_front();
+                        break;
+                    }
+                    reste -= p.len();
+                    self.paquets.pop_front();
+                    if reste == 0 {
+                        break;
+                    }
+                }
                 self.reponse.extend(rep);
             }
             Ok(o.len())
@@ -407,6 +487,24 @@ mod tests {
     }
 
     #[test]
+    fn une_commande_par_paquet_comme_avrdude() {
+        let mut mmu = Caterina::new();
+        // l’ancienne présentation : Échap et « S » dans le même paquet, « S » est jeté et le MMU ne répond rien
+        envoyer(&mut mmu, b"\x1bS").unwrap();
+        assert!(mmu.reponse.is_empty() && mmu.paquets.is_empty());
+        assert_eq!(identifier(&mut mmu).unwrap(), b"CATERIN");
+        assert!(lire(&mut mmu, 1, b'S').unwrap_err().contains("« S »"));
+    }
+
+    #[test]
+    fn flashe_un_chargeur_mmctl20() {
+        let ((image, pages), mut mmu) = (image(), Caterina::new());
+        mmu.mmctl = true;
+        flasher(&mut mmu, &image, &pages, |_, _| {}).unwrap();
+        assert_eq!(mmu.flash[..4], image[..4]);
+    }
+
+    #[test]
     fn flashe_et_relit_page_zero_en_dernier() {
         let ((image, pages), mut mmu, mut etapes) = (image(), Caterina::new(), vec![]);
         flasher(&mut mmu, &image, &pages, |f, t| etapes.push((f, t))).unwrap();
@@ -417,7 +515,7 @@ mod tests {
         assert_eq!(mmu.ecrites, [(0, 0xFF), (4, 9), (0xDF, 3), (0, 0x0C)]);
         assert_eq!(mmu.flash[PAGE], 0x55);
         assert_eq!(etapes.last(), Some(&(6, 6)));
-        assert!(mmu.recu.is_empty() && mmu.reponse.is_empty());
+        assert!(mmu.paquets.is_empty() && mmu.reponse.is_empty());
     }
 
     #[test]

@@ -188,7 +188,7 @@ $('#reseau').onclick = async (ev) => {
 };
 
 /* ---------- MMU3 ---------- */
-const ETATS_MMU = { absent: 'Aucun MMU relié à cet ordinateur.', firmware: 'MMU3 relié.',
+const ETATS_MMU = { absent: 'Aucun MMU vu. S’il est relié, « Installer sur le MMU » vous demandera d’appuyer sur son bouton reset.', firmware: 'MMU3 relié.',
   chargeur: 'MMU3 relié, dans son mode de mise à jour.', plusieurs: 'Plusieurs MMU sont reliés : n’en gardez qu’un.' };
 let flashMmu = false;
 async function surveillerMmu() {
@@ -196,7 +196,7 @@ async function surveillerMmu() {
   let etat;
   try { etat = await invoke('mmu_detecter'); } catch { return; }
   $('#mmu').textContent = ETATS_MMU[etat];
-  $('#flasherMmu').hidden = etat !== 'firmware' && etat !== 'chargeur';
+  $('#flasherMmu').hidden = etat === 'plusieurs'; // sans MMU vu aussi : mode de secours par le bouton reset
 }
 setInterval(surveillerMmu, 2000);
 

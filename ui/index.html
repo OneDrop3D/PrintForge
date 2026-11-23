@@ -167,9 +167,10 @@
       <h2>Firmware du MMU3</h2>
       <p class="muet">Le firmware OneDrop3D du MMU active les commandes de la poulie (Axes du MMU). Les versions « Officiel Prusa » servent à revenir en arrière. PrintForge l’installe par le port USB du MMU, comme PrusaSlicer, puis relit tout ce qu’il a écrit.</p>
       <ol>
-        <li>Laissez le MMU branché sur l’imprimante, allumée et au repos : c’est elle qui l’alimente.</li>
+        <li>Laissez le MMU branché sur l’imprimante, allumée et au repos : c’est elle qui l’alimente. Sur CORE One, activez d’abord Atelier › MMU › Réglages › « Préparer la mise à jour USB du MMU » (firmware OneDrop3D 8.0.2.27 ou plus récent) : l’imprimante cesse de parler au MMU pendant l’installation.</li>
         <li>Reliez le port micro-USB de la carte du MMU à cet ordinateur, avec un câble qui transmet les données (pas un câble de charge seule).</li>
         <li>Choisissez la version, puis « Installer sur le MMU ». Ne débranchez rien avant la fin, moins d’une minute.</li>
+        <li>Sur CORE One, touchez ensuite « Terminer » sur l’imprimante : le MMU redémarre et sa nouvelle version s’affiche.</li>
       </ol>
       <label class="champ">Version<select id="versionMmu"><option>Lecture des versions sur GitHub…</option></select></label>
       <div class="ligne"><button class="bouton" id="actualiserMmu">Actualiser la liste</button></div>
