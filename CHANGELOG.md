@@ -1,5 +1,11 @@
 # Journal des versions
 
+## Version 0.1.11
+
+- **Musique** : le fichier MIDI est joué à trois voix (la mélodie et une 2e voix sur les deux moteurs du haut, la basse sur le plateau) au lieu d’une seule note sur l’axe X, et les accords de moins de 40 ms d’un morceau joué par un humain sont lissés : la mélodie se reconnaît bien mieux. Sur une clé USB, le fichier MIDI est copié à côté du G-code, pour l’écran Musique des moteurs de l’imprimante. L’imprimante n’affiche plus l’avertissement « pas tranché pour l’input shaping » en lançant la musique.
+
+---
+
 ## Version 0.1.10
 
 - **Firmware** : un choix « Imprimante » au-dessus de la liste des versions (CORE One, One+ et One+ Gen2 ; CORE One L ; CORE One INDX ; CORE One L INDX). Chaque modèle reçoit son propre firmware. L’imprimante reliée est reconnue toute seule, le choix est gardé pour préparer la clé d’une autre imprimante, et l’installation par le réseau refuse un firmware fait pour un autre modèle.

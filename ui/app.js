@@ -333,10 +333,11 @@ $('#cleMidi').onclick = async (ev) => {
   dire(m, L(`Écriture sur la clé ${cite(cle.nom)}…`, `Writing to the drive ${cite(cle.nom)}…`));
   try {
     const r = await invoke('musique_cle', { chemin: midi, pasParMm: pas, cle: cle.chemin });
-    const fait = `${cite(r.nom)} (${r.notes} notes, ${duree(r.duree)})` + L(' est sur la clé', ' is on the drive');
-    dire(m, fait + (r.ejectee ? L(', qui est éjectée : branchez-la sur l’imprimante et lancez le fichier depuis Imprimer.', ', which is ejected: plug it into the printer and start the file from Print.')
+    const fait = `${cite(r.nom)} (${r.notes} notes, ${duree(r.duree)})` + L(` et ${cite(r.midi)} sont sur la clé`, ` and ${cite(r.midi)} are on the drive`);
+    const lancer = L(' lancez le G-code depuis Imprimer, ou le MIDI depuis Contrôle › Musique des moteurs.', ' start the G-code from Print, or the MIDI from Control › Motor music.');
+    dire(m, fait + (r.ejectee ? L(', qui est éjectée : branchez-la sur l’imprimante, puis', ', which is ejected: plug it into the printer, then') + lancer
       : r.ejectee === false ? L(', mais elle n’a pas pu être éjectée : éjectez-la avant de la retirer.', ', but it could not be ejected: eject it before removing it.')
-      : L(' : éjectez-la, puis branchez-la sur l’imprimante et lancez le fichier depuis Imprimer.', ': eject it, then plug it into the printer and start the file from Print.')), 'ok');
+      : L(' : éjectez-la, branchez-la sur l’imprimante, puis', ': eject it, plug it into the printer, then') + lancer), 'ok');
   } catch (e) { dire(m, String(e), 'ko'); }
   finally { ev.target.disabled = false; }
 };
