@@ -3,9 +3,15 @@
 <plist version="1.0">
 <dict>
   <!-- Ajouté par Tauri à l'Info.plist de l'application. Depuis macOS 15, joindre l'imprimante (Bonjour, PrusaLink)
-       demande l'accès au réseau local : ce texte s'affiche dans la demande. -->
+       demande l'accès au réseau local : ce texte s'affiche dans la demande (en français : fr.lproj/InfoPlist.strings).
+       Les deux langues déclarées font aussi passer navigator.language en français sur un Mac en français. -->
+  <key>CFBundleLocalizations</key>
+  <array>
+    <string>en</string>
+    <string>fr</string>
+  </array>
   <key>NSLocalNetworkUsageDescription</key>
-  <string>OneDrop PrintForge cherche votre imprimante Prusa sur le réseau local et lui envoie fichiers et firmwares.</string>
+  <string>OneDrop PrintForge looks for your Prusa printer on the local network and sends it files and firmware.</string>
   <key>NSBonjourServices</key>
   <array>
     <string>_prusalink._tcp</string>

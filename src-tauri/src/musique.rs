@@ -21,9 +21,9 @@ const CENTRE: &str = "X125 Y110";
 
 /// Les notes à jouer : début et fin en secondes, numéro MIDI. À chaque instant, la plus aiguë de celles qui sonnent.
 fn notes(octets: &[u8]) -> Result<Vec<(f64, f64, u8)>, String> {
-    let smf = Smf::parse(octets).map_err(|e| format!("Fichier MIDI illisible ({e})."))?;
+    let smf = Smf::parse(octets).map_err(|e| tr!("Fichier MIDI illisible ({e}).", "Unreadable MIDI file ({e})."))?;
     if smf.header.format == Format::Sequential {
-        return Err("Les fichiers MIDI de format 2 ne sont pas pris en charge.".into());
+        return Err(tr!("Les fichiers MIDI de format 2 ne sont pas pris en charge.", "Format 2 MIDI files are not supported."));
     }
     // (tic, sorte, valeur), toutes pistes fusionnées. À tic égal : tempo, fins de notes, débuts, fins de piste ;
     // une note relâchée puis frappée au même instant est donc rejouée.
@@ -91,12 +91,12 @@ fn notes(octets: &[u8]) -> Result<Vec<(f64, f64, u8)>, String> {
 /// Le G-code d’un fichier MIDI : le texte, le nombre de notes et la durée en secondes.
 pub fn gcode(octets: &[u8], pas_par_mm: f64) -> Result<(String, usize, f64), String> {
     if !(pas_par_mm.is_finite() && pas_par_mm > 0.0) {
-        return Err("Le nombre de pas par millimètre doit être un nombre positif.".into());
+        return Err(tr!("Le nombre de pas par millimètre doit être un nombre positif.", "Steps per millimetre must be a positive number."));
     }
     let notes = notes(octets)?;
     let (debut_morceau, fin_morceau) = match (notes.first(), notes.last()) {
         (Some(premiere), Some(derniere)) => (premiere.0, derniere.1),
-        _ => return Err("Ce fichier MIDI ne contient aucune note à jouer.".into()),
+        _ => return Err(tr!("Ce fichier MIDI ne contient aucune note à jouer.", "This MIDI file has no notes to play.")),
     };
     let mut g = format!(
         "; Musique OneDrop PrintForge : {} notes, {pas_par_mm} pas/mm\nG28\nG90\nG1 Z10 F600\nG1 {CENTRE} F6000\nG91\n",
@@ -136,7 +136,7 @@ pub fn gcode(octets: &[u8], pas_par_mm: f64) -> Result<(String, usize, f64), Str
 #[tauri::command(async)]
 pub fn musique_envoyer(app: AppHandle, chemin: String, pas_par_mm: f64, jouer: bool) -> Result<Value, String> {
     let imprimante = Imprimante::reliee(&app)?;
-    let octets = std::fs::read(&chemin).map_err(|e| format!("Fichier illisible : {e}"))?;
+    let octets = std::fs::read(&chemin).map_err(|e| tr!("Fichier illisible : {e}", "Unreadable file: {e}"))?;
     let (texte, notes, duree) = gcode(&octets, pas_par_mm)?;
     let nom = nom_musique(&chemin);
     let mut r = resultat_envoi(imprimante.deposer(&nom, texte.as_bytes(), texte.len() as u64, jouer)?, &nom, jouer)?;
@@ -150,7 +150,7 @@ pub fn musique_envoyer(app: AppHandle, chemin: String, pas_par_mm: f64, jouer: b
 #[tauri::command(async)]
 pub fn musique_cle(chemin: String, pas_par_mm: f64, cle: String) -> Result<Value, String> {
     firmware::cle_lisible(&cle)?;
-    let octets = std::fs::read(&chemin).map_err(|e| format!("Fichier illisible : {e}"))?;
+    let octets = std::fs::read(&chemin).map_err(|e| tr!("Fichier illisible : {e}", "Unreadable file: {e}"))?;
     let (texte, notes, duree) = gcode(&octets, pas_par_mm)?;
     let nom = nom_musique(&chemin);
     firmware::ecrire_sur_cle(&cle, &nom, texte.as_bytes())?;

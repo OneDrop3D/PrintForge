@@ -1,7 +1,7 @@
 [package]
 name = "printforge"
-version = "0.1.8"
-description = "OneDrop PrintForge : firmware, fichiers et musique pour la Prusa CORE One"
+version = "0.1.10"
+description = "OneDrop PrintForge: firmware, files and music for the Prusa CORE One"
 edition = "2021"
 
 [build-dependencies]

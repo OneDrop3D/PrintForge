@@ -1,0 +1,2 @@
+/* Texte français de la demande d'accès au réseau local (macOS 15 et plus) ; l'anglais est dans Info.plist. */
+"NSLocalNetworkUsageDescription" = "OneDrop PrintForge cherche votre imprimante Prusa sur le réseau local et lui envoie fichiers et firmwares.";

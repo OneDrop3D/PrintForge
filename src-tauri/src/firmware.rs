@@ -14,18 +14,62 @@ const DEPOTS: [(&str, &str); 2] = [("OneDrop3D", "OneDrop3D/Prusa-Firmware-Buddy
 /// Le nom du firmware envoyé par le réseau sur la clé de l’imprimante.
 const BBF_RESEAU: &str = "OD3DFW.BBF";
 
-/// Le .bbf de la CORE One (One+, One+ Gen2) d’une release, sans ceux de la CORE One L ni de l’INDX.
-fn coreone(source: &str, nom: &str) -> bool {
-    if source == "OneDrop3D" {
-        return nom.contains("-OD3D") && nom.ends_with(".bbf"); // l’officiel joint à nos releases est listé avec Prusa
+/// L’imprimante d’un .bbf d’après son nom : « coreone » (CORE One, One+, One+ Gen2), « coreonel », « coreone_indx » ou
+/// « coreonel_indx ». Prusa : COREONE_COREONE+GEN2_firmware_…, COREONEL_COREONEL+_firmware_…, …INDX… ; nous :
+/// coreone_release_boot_…-OD3D.N, coreonel_…_OD3D.N, coreone_indx_…, coreonel_indx_…
+fn modele(source: &str, nom: &str) -> Option<&'static str> {
+    let n = nom.to_lowercase();
+    // les officiels joints à nos releases sont listés avec Prusa
+    if !n.ends_with(".bbf") || (source == "OneDrop3D" && !n.contains("od3d")) {
+        return None;
     }
-    nom.starts_with("COREONE_") && !nom.starts_with("COREONE_L") && !nom.contains("INDX") && nom.ends_with(".bbf")
+    let l = n.starts_with("coreonel");
+    if !l && !n.starts_with("coreone_") {
+        return None;
+    }
+    Some(match (l, n.contains("indx")) {
+        (false, false) => "coreone",
+        (true, false) => "coreonel",
+        (false, true) => "coreone_indx",
+        (true, true) => "coreonel_indx",
+    })
 }
 
-/// Les nôtres d’abord, puis les officiels. Seuls les fichiers dont GitHub donne l’empreinte sont proposés.
+fn bbf(source: &str, nom: &str) -> bool {
+    modele(source, nom).is_some()
+}
+
+/// Le modèle d’une imprimante d’après PrusaLink : « printer » de /api/version = type.version.sous-version
+/// (printer_model_data.hpp de Prusa : CORE One 7.1, CORE One L 8.1, avec INDX 7.10 et 8.10).
+pub(crate) fn modele_imprimante(version: &Value) -> Option<&'static str> {
+    let mut p = version["printer"].as_str()?.split('.');
+    match (p.next()?, p.next()?) {
+        ("7", "10") => Some("coreone_indx"),
+        ("8", "10") => Some("coreonel_indx"),
+        ("7", _) => Some("coreone"),
+        ("8", _) => Some("coreonel"),
+        _ => None,
+    }
+}
+
+fn nom_modele(m: &str) -> &'static str {
+    match m {
+        "coreonel" => "CORE One L",
+        "coreone_indx" => "CORE One INDX",
+        "coreonel_indx" => "CORE One L INDX",
+        _ => "CORE One",
+    }
+}
+
+/// Les nôtres d’abord, puis les officiels, chacun avec son imprimante (« modele »). Seuls les fichiers dont GitHub
+/// donne l’empreinte sont proposés.
 #[tauri::command(async)]
 pub fn firmware_versions() -> Result<Vec<Value>, String> {
-    versions(&DEPOTS, coreone)
+    let mut lues = versions(&DEPOTS, bbf)?;
+    for v in &mut lues {
+        v["modele"] = json!(modele(v["source"].as_str().unwrap_or(""), v["nom"].as_str().unwrap_or("")));
+    }
+    Ok(lues)
 }
 
 /// Les fichiers que `garder(source, nom)` retient dans les releases de ces dépôts (le firmware de l’imprimante ou du MMU).
@@ -35,12 +79,16 @@ pub(crate) fn versions(depots: &[(&str, &str)], garder: fn(&str, &str) -> bool) 
         let mut r = client(Duration::from_secs(30))
             .get(format!("https://api.github.com/repos/{depot}/releases?per_page=50"))
             .call()
-            .map_err(|e| format!("GitHub ne répond pas : vérifiez la connexion à Internet ({e})."))?;
+            .map_err(|e| tr!("GitHub ne répond pas : vérifiez la connexion à Internet ({e}).", "GitHub is not answering: check the Internet connection ({e})."))?;
         if r.status() != 200 {
-            return Err(format!("GitHub refuse la liste des versions (code {}) : réessayez plus tard.", r.status().as_u16()));
+            return Err(tr!(
+                "GitHub refuse la liste des versions (code {}) : réessayez plus tard.",
+                "GitHub refused the version list (code {}): try again later.",
+                r.status().as_u16()
+            ));
         }
         let releases: Value = serde_json::from_str(&r.body_mut().read_to_string().map_err(|e| e.to_string())?)
-            .map_err(|_| "Liste des versions illisible.".to_string())?;
+            .map_err(|_| tr!("Liste des versions illisible.", "Unreadable version list."))?;
         lues.push((*source, releases));
     }
     Ok(retenir(&lues, garder))
@@ -89,6 +137,26 @@ mod tests {
     }
 
     #[test]
+    fn chaque_bbf_a_son_imprimante() {
+        use super::{modele, modele_imprimante};
+        let ours = |n| modele("OneDrop3D", n);
+        assert_eq!(ours("coreone_release_boot_8.0.3-OD3D.39.bbf"), Some("coreone"));
+        assert_eq!(ours("coreonel_release_boot_8.0.3_OD3D.39.bbf"), Some("coreonel"));
+        assert_eq!(ours("coreone_indx_release_boot_8.0.3_OD3D.39.bbf"), Some("coreone_indx"));
+        assert_eq!(ours("coreonel_indx_release_boot_8.0.3_OD3D.39.bbf"), Some("coreonel_indx"));
+        assert_eq!(ours("COREONE_COREONE+GEN2_firmware_8.0.3_beta.bbf"), None); // l’officiel joint : listé avec Prusa
+        let prusa = |n| modele("Prusa", n);
+        assert_eq!(prusa("COREONE_COREONE+GEN2_firmware_8.0.3_beta.bbf"), Some("coreone"));
+        assert_eq!(prusa("COREONEL_COREONEL+_firmware_8.0.2.bbf"), Some("coreonel"));
+        assert_eq!(prusa("COREONE_COREONE+GEN2_INDX-firmware_7.0.1+16905.bbf"), Some("coreone_indx"));
+        assert_eq!(prusa("MK4_MK4S_MK3.9_MK3.9S_firmware_8.0.2.bbf"), None);
+        let imp = |p: &str| modele_imprimante(&serde_json::json!({ "printer": p }));
+        assert_eq!((imp("7.1.0"), imp("7.2.0"), imp("8.1.0")), (Some("coreone"), Some("coreone"), Some("coreonel")));
+        assert_eq!((imp("7.10.0"), imp("8.10.0"), imp("4.0.0")), (Some("coreone_indx"), Some("coreonel_indx"), None));
+        assert_eq!(modele_imprimante(&serde_json::json!({})), None);
+    }
+
+    #[test]
     fn la_plus_recente_d_abord() {
         let v = |t: &str, beta: bool| serde_json::json!({ "version": t, "beta": beta });
         assert!(super::numeros(&v("od3d-8.0.2.10", false)) > super::numeros(&v("od3d-8.0.2.9", false)));
@@ -103,7 +171,7 @@ pub(crate) fn fichier(depots: &[(&str, &str)], garder: fn(&str, &str) -> bool, v
     let (source, url, nom) = (v["source"].as_str().unwrap_or(""), v["url"].as_str().unwrap_or(""), v["nom"].as_str().unwrap_or(""));
     let depot = depots.iter().find(|(s, _)| *s == source).map(|(_, d)| format!("https://github.com/{d}/releases/download/"));
     if !(depot.is_some_and(|d| url.starts_with(&d)) && !nom.contains(['/', '\\']) && garder(source, nom)) {
-        return Err("Ce fichier ne fait pas partie des versions du firmware.".into());
+        return Err(tr!("Ce fichier ne fait pas partie des versions du firmware.", "This file is not one of the firmware versions."));
     }
     Ok((url.into(), nom.into(), v["taille"].as_u64().unwrap_or(0), v["sha256"].as_str().unwrap_or("").into()))
 }
@@ -134,9 +202,10 @@ fn cles() -> Vec<Value> {
             }
             let probleme = if texte(&info, "FilesystemType") != "msdos" {
                 let format = Some(texte(&info, "FilesystemUserVisibleName")).filter(|f| !f.is_empty());
-                format!("elle est en {}, et l’imprimante ne lit que le FAT32", format.as_deref().unwrap_or("format inconnu"))
+                let format = format.unwrap_or_else(|| tr!("format inconnu", "unknown"));
+                tr!("elle est en {format}, et l’imprimante ne lit que le FAT32", "its format is {format}, and the printer only reads FAT32")
             } else if texte(&diskutil(&texte(&info, "ParentWholeDisk")), "Content") != "FDisk_partition_scheme" {
-                "son schéma de partition n’est pas MBR".into()
+                tr!("son schéma de partition n’est pas MBR", "its partition scheme is not MBR")
             } else {
                 String::new()
             };
@@ -158,7 +227,7 @@ fn cles() -> Vec<Value> {
             let probleme = if format.eq_ignore_ascii_case("FAT32") {
                 String::new()
             } else {
-                format!("elle est en {format}, et l’imprimante ne lit que le FAT32")
+                tr!("elle est en {format}, et l’imprimante ne lit que le FAT32", "its format is {format}, and the printer only reads FAT32")
             };
             let nom = if etiquette.is_empty() { chemin.clone() } else { format!("{etiquette} ({})", chemin.trim_end_matches('\\')) };
             json!({ "chemin": chemin, "nom": nom, "probleme": probleme })
@@ -193,7 +262,7 @@ pub(crate) fn cle_lisible(cle: &str) -> Result<(), String> {
     if cles().iter().any(|c| c["chemin"] == cle && c["probleme"] == "") {
         return Ok(());
     }
-    Err("Cette clé n’est plus branchée, ou l’imprimante ne pourrait pas la lire.".into())
+    Err(tr!("Cette clé n’est plus branchée, ou l’imprimante ne pourrait pas la lire.", "This USB drive is no longer plugged in, or the printer could not read it."))
 }
 
 /// Le fichier à la racine de la clé, jamais à moitié écrit sous les yeux de l’imprimante : un .part, renommé une fois complet.
@@ -208,7 +277,7 @@ pub(crate) fn ecrire_sur_cle(cle: &str, nom: &str, octets: &[u8]) -> Result<(), 
     };
     ecrire().map_err(|e| {
         let _ = fs::remove_file(&partiel);
-        format!("Écriture sur la clé impossible : {e}")
+        tr!("Écriture sur la clé impossible : {e}", "Could not write to the USB drive: {e}")
     })
 }
 
@@ -216,7 +285,7 @@ pub(crate) fn ecrire_sur_cle(cle: &str, nom: &str, octets: &[u8]) -> Result<(), 
 #[tauri::command(async)]
 pub fn firmware_copier(cle: String, version: Value) -> Result<Value, String> {
     cle_lisible(&cle)?;
-    let (url, nom, taille, sha256) = fichier(&DEPOTS, coreone, &version)?;
+    let (url, nom, taille, sha256) = fichier(&DEPOTS, bbf, &version)?;
     let octets = telecharger(&url, taille, &sha256)?;
     ecrire_sur_cle(&cle, &nom, &octets)?;
     let dossier = Path::new(&cle);
@@ -234,18 +303,34 @@ pub fn firmware_copier(cle: String, version: Value) -> Result<Value, String> {
 #[tauri::command(async)]
 pub fn firmware_reseau(app: AppHandle, version: Value) -> Result<Value, String> {
     let imprimante = Imprimante::reliee(&app)?;
-    let (url, _, taille, sha256) = fichier(&DEPOTS, coreone, &version)?;
+    let (url, nom, taille, sha256) = fichier(&DEPOTS, bbf, &version)?;
     let etat = imprimante.lire("/api/v1/status")?["printer"]["state"].as_str().unwrap_or("").to_string();
     if !["IDLE", "READY", "FINISHED", "STOPPED"].contains(&etat.as_str()) {
-        return Err(format!("Installation refusée : l’imprimante doit être au repos, sans impression en cours (état : {etat})."));
+        return Err(tr!(
+            "Installation refusée : l’imprimante doit être au repos, sans impression en cours (état : {etat}).",
+            "Installation refused: the printer must be idle, with no print in progress (state: {etat})."
+        ));
     }
-    let avant = imprimante.lire("/api/version")?["firmware"].as_str().unwrap_or("").to_string();
+    let infos = imprimante.lire("/api/version")?;
+    // le modèle du fichier vient de son nom, jamais de la page ; sans « printer » (vieux firmware), pas de contrôle
+    let pour = modele(version["source"].as_str().unwrap_or(""), &nom).unwrap_or("");
+    if let Some(reliee) = modele_imprimante(&infos).filter(|m| *m != pour) {
+        let (cible, reliee) = (nom_modele(pour), nom_modele(reliee));
+        return Err(tr!(
+            "Installation refusée : ce firmware est pour une {cible}, et l’imprimante reliée est une {reliee}. Choisissez « {reliee} » dans Imprimante, au-dessus de la version.",
+            "Installation refused: this firmware is for a {cible}, and the linked printer is a {reliee}. Choose “{reliee}” under Printer, above the version."
+        ));
+    }
+    let avant = infos["firmware"].as_str().unwrap_or("").to_string();
     let octets = telecharger(&url, taille, &sha256)?;
     let chemin = format!("{USB}{BBF_RESEAU}");
     match imprimante.deposer(BBF_RESEAU, &octets[..], taille, false)? {
         (201, _) => {}
         (415, _) => {
-            return Err("Le firmware de votre imprimante ne permet pas encore l’installation par le réseau : utilisez une clé USB (ci-dessus).".into())
+            return Err(tr!(
+                "Le firmware de votre imprimante ne permet pas encore l’installation par le réseau : utilisez une clé USB (ci-dessus).",
+                "Your printer’s firmware cannot install over the network yet: use a USB drive (above)."
+            ))
         }
         (code, corps) => return Err(refus(code, &corps)),
     }
@@ -253,7 +338,7 @@ pub fn firmware_reseau(app: AppHandle, version: Value) -> Result<Value, String> 
     if let Ok((code, _)) = imprimante.requete("POST", &chemin, &[], &b""[..], Duration::from_secs(10)) {
         if code >= 300 {
             let _ = imprimante.requete("DELETE", &chemin, &[], (), Duration::from_secs(5));
-            return Err(format!("L’imprimante n’a pas lancé l’installation (code {code})."));
+            return Err(tr!("L’imprimante n’a pas lancé l’installation (code {code}).", "The printer did not start the installation (code {code})."));
         }
     }
     let fin = Instant::now() + Duration::from_secs(180);
@@ -267,6 +352,9 @@ pub fn firmware_reseau(app: AppHandle, version: Value) -> Result<Value, String> 
     let _ = imprimante.requete("DELETE", &chemin, &[], (), Duration::from_secs(5));
     match apres {
         Some(f) => Ok(json!({ "firmware": f })),
-        None => Err("Pas de nouvelle version au bout de 3 minutes : regardez l’écran de l’imprimante. Pour une version identique ou plus ancienne, passez par la clé USB (molette au logo).".into()),
+        None => Err(tr!(
+            "Pas de nouvelle version au bout de 3 minutes : regardez l’écran de l’imprimante. Pour une version identique ou plus ancienne, passez par la clé USB (molette au logo).",
+            "No new version after 3 minutes: look at the printer’s screen. For the same or an older version, use the USB drive (knob at the logo)."
+        )),
     }
 }

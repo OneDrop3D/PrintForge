@@ -28,9 +28,11 @@
     background: none; color: var(--sur-plaque); cursor: pointer; }
   .selecteur button:hover { color: #fff; background: rgba(255, 255, 255, .08); }
   .selecteur button[aria-selected="true"] { background: var(--orange); color: #1b1412; }
-  #majVerifier { margin-left: auto; flex: none; font: inherit; font-size: 13px; color: var(--sur-plaque); background: none;
+  #majVerifier { margin-left: auto; }
+  #majVerifier, #langue { flex: none; font: inherit; font-size: 13px; color: var(--sur-plaque); background: none;
     border: 1px solid var(--plaque-2); border-radius: 10px; padding: 7px 11px; cursor: pointer; }
-  #majVerifier:hover { color: #fff; border-color: var(--sur-plaque); }
+  #majVerifier:hover, #langue:hover { color: #fff; border-color: var(--sur-plaque); }
+  #langue { font-weight: 650; min-width: 44px; }
   header button:focus-visible { outline: 2px solid var(--bleu); outline-offset: 2px; }
 
   .bandeau { display: flex; gap: 12px 18px; align-items: flex-start; justify-content: space-between; flex-wrap: wrap;
@@ -70,57 +72,58 @@
   dl.etat dt { color: var(--muet); }
   dl.etat dd { margin: 0; font-weight: 600; }
   [hidden] { display: none !important; }
-  @media (max-width: 860px) { .marque span, #majVerifier span { display: none; } .selecteur button { font-size: 14px; } }
+  @media (max-width: 860px) { .marque span, #versionApp { display: none; } .selecteur button { font-size: 14px; } }
 </style>
 </head>
 <body>
 <header>
-  <div class="marque"><img src="icone.png" alt=""><div><b>OneDrop PrintForge</b><span>pour Prusa CORE One</span></div></div>
-  <nav class="selecteur" role="tablist" aria-label="Parties de l’application">
-    <button role="tab" id="onglet-imprimante" aria-controls="imprimante" data-vue="imprimante">Imprimante</button>
+  <div class="marque"><img src="icone.png" alt=""><div><b>OneDrop PrintForge</b><span data-en="for Prusa CORE One">pour Prusa CORE One</span></div></div>
+  <nav class="selecteur" role="tablist" aria-label="Parties de l’application" data-en-aria-label="App sections">
+    <button role="tab" id="onglet-imprimante" aria-controls="imprimante" data-vue="imprimante" data-en="Printer">Imprimante</button>
     <button role="tab" id="onglet-firmware" aria-controls="firmware" data-vue="firmware">Firmware</button>
-    <button role="tab" id="onglet-envoyer" aria-controls="envoyer" data-vue="envoyer">Envoyer</button>
+    <button role="tab" id="onglet-envoyer" aria-controls="envoyer" data-vue="envoyer" data-en="Send">Envoyer</button>
   </nav>
-  <button id="majVerifier" title="Rechercher une mise à jour de l’application">Mises à jour<span id="versionApp"></span></button>
+  <button id="majVerifier" title="Rechercher une mise à jour de l’application" data-en-title="Look for an app update"><span data-en="Updates">Mises à jour</span><span id="versionApp"></span></button>
+  <button id="langue" title="Switch to English" data-en-title="Passer en français" data-en="FR">EN</button>
 </header>
 
-<div class="bandeau" id="bandeau" role="region" aria-label="Mise à jour de l’application" hidden>
+<div class="bandeau" id="bandeau" role="region" aria-label="Mise à jour de l’application" hidden data-en-aria-label="App update">
   <div>
     <b id="majTitre"></b>
-    <details id="majDetails"><summary>Nouveautés</summary><div id="majNotes"></div></details>
+    <details id="majDetails"><summary data-en="What’s new">Nouveautés</summary><div id="majNotes"></div></details>
     <p class="message" id="majMessage" role="status"></p>
   </div>
   <div class="ligne">
-    <button class="bouton principal" id="majInstaller">Mettre à jour</button>
-    <button class="bouton" id="majFermer">Plus tard</button>
+    <button class="bouton principal" id="majInstaller" data-en="Update">Mettre à jour</button>
+    <button class="bouton" id="majFermer" data-en="Later">Plus tard</button>
   </div>
 </div>
 
 <main class="vue" id="imprimante" role="tabpanel" aria-labelledby="onglet-imprimante" hidden>
   <div class="colonne">
     <section class="carte">
-      <h2>Votre imprimante</h2>
-      <p class="muet" id="sansImprimante">Aucune imprimante reliée : cherchez-la sur le réseau ou saisissez son adresse ci-dessous.</p>
+      <h2 data-en="Your printer">Votre imprimante</h2>
+      <p class="muet" id="sansImprimante" data-en="No printer linked: search for it on the network or enter its address below.">Aucune imprimante reliée : cherchez-la sur le réseau ou saisissez son adresse ci-dessous.</p>
       <dl class="etat" id="etat" hidden>
-        <dt>Nom</dt><dd id="eNom"></dd>
+        <dt data-en="Name">Nom</dt><dd id="eNom"></dd>
         <dt>Firmware</dt><dd id="eFirmware"></dd>
-        <dt>État</dt><dd id="eEtat"></dd>
-        <dt>Buse</dt><dd id="eBuse"></dd>
-        <dt>Plateau</dt><dd id="ePlateau"></dd>
-        <dt class="travail">Impression</dt><dd class="travail" id="eTravail"></dd>
+        <dt data-en="State">État</dt><dd id="eEtat"></dd>
+        <dt data-en="Nozzle">Buse</dt><dd id="eBuse"></dd>
+        <dt data-en="Bed">Plateau</dt><dd id="ePlateau"></dd>
+        <dt class="travail" data-en="Print">Impression</dt><dd class="travail" id="eTravail"></dd>
       </dl>
       <p class="message" id="msgEtat" role="status"></p>
     </section>
 
     <section class="carte">
-      <h2>Relier l’imprimante</h2>
-      <p class="muet">L’imprimante et cet ordinateur doivent être sur le même réseau, avec PrusaLink activé sur l’imprimante (<b>Réglages › Réseau › PrusaLink</b>). Pour la relier, affichez un code sur l’imprimante : <b>Réglages › Fonctions OneDrop3D › Associer PrintForge</b>, puis saisissez-le ici. Avec le firmware officiel, saisissez plutôt le mot de passe de PrusaLink.</p>
-      <div class="ligne"><button class="bouton" id="chercher">Chercher sur le réseau</button></div>
+      <h2 data-en="Link the printer">Relier l’imprimante</h2>
+      <p class="muet" data-en="The printer and this computer must be on the same network, with PrusaLink enabled on the printer (<b>Settings › Network › PrusaLink</b>). To link it, show a code on the printer: <b>Settings › OneDrop3D Features › Pair PrintForge</b>, then enter it here. With the official firmware, enter the PrusaLink password instead.">L’imprimante et cet ordinateur doivent être sur le même réseau, avec PrusaLink activé sur l’imprimante (<b>Réglages › Réseau › PrusaLink</b>). Pour la relier, affichez un code sur l’imprimante : <b>Réglages › Fonctions OneDrop3D › Associer PrintForge</b>, puis saisissez-le ici. Avec le firmware officiel, saisissez plutôt le mot de passe de PrusaLink.</p>
+      <div class="ligne"><button class="bouton" id="chercher" data-en="Search the network">Chercher sur le réseau</button></div>
       <div class="ligne" id="trouvees"></div>
       <p class="message" id="msgChercher" role="status"></p>
-      <label class="champ">Adresse de l’imprimante (IP ou nom)<input type="text" id="adresse" placeholder="192.168.1.50" autocomplete="off" spellcheck="false"></label>
-      <label class="champ">Code à 6 chiffres (ou mot de passe PrusaLink)<input type="text" id="motDePasse" autocomplete="off" spellcheck="false" placeholder="123456"></label>
-      <div class="ligne espace"><button class="bouton principal" id="enregistrer">Enregistrer et tester</button></div>
+      <label class="champ"><span data-en="Printer address (IP or name)">Adresse de l’imprimante (IP ou nom)</span><input type="text" id="adresse" placeholder="192.168.1.50" autocomplete="off" spellcheck="false"></label>
+      <label class="champ"><span data-en="6-digit code (or PrusaLink password)">Code à 6 chiffres (ou mot de passe PrusaLink)</span><input type="text" id="motDePasse" autocomplete="off" spellcheck="false" placeholder="123456"></label>
+      <div class="ligne espace"><button class="bouton principal" id="enregistrer" data-en="Save and test">Enregistrer et tester</button></div>
       <p class="message" id="msgRelier" role="status"></p>
     </section>
   </div>
@@ -129,52 +132,58 @@
 <main class="vue" id="firmware" role="tabpanel" aria-labelledby="onglet-firmware" hidden>
   <div class="colonne">
     <section class="carte">
-      <h2>Version à installer</h2>
-      <p class="muet">Le firmware OneDrop3D part du dernier firmware officiel de Prusa et y ajoute nos fonctions. Les versions « Officiel Prusa » servent à revenir en arrière.</p>
-      <label class="champ">Version<select id="version"><option>Lecture des versions sur GitHub…</option></select></label>
-      <div class="ligne"><button class="bouton" id="actualiserVersions">Actualiser la liste</button></div>
+      <h2 data-en="Version to install">Version à installer</h2>
+      <p class="muet" data-en="The OneDrop3D firmware starts from Prusa’s latest official firmware and adds our features. The “Official Prusa” versions are for going back. Each printer has its own file: choose yours (a printer you link is chosen by itself).">Le firmware OneDrop3D part du dernier firmware officiel de Prusa et y ajoute nos fonctions. Les versions « Officiel Prusa » servent à revenir en arrière. Chaque imprimante a son propre fichier : choisissez la vôtre (une imprimante que vous reliez est choisie d’elle-même).</p>
+      <label class="champ"><span data-en="Printer">Imprimante</span><select id="modele">
+        <option value="coreone">CORE One (One+, One+ Gen2)</option>
+        <option value="coreonel">CORE One L</option>
+        <option value="coreone_indx">CORE One INDX</option>
+        <option value="coreonel_indx">CORE One L INDX</option>
+      </select></label>
+      <label class="champ">Version<select id="version"><option data-en="Reading the versions on GitHub…">Lecture des versions sur GitHub…</option></select></label>
+      <div class="ligne"><button class="bouton" id="actualiserVersions" data-en="Refresh the list">Actualiser la liste</button></div>
       <p class="message" id="msgVersions" role="status"></p>
     </section>
 
     <section class="carte">
-      <h2>Par clé USB</h2>
-      <p class="muet">Choisissez la version, puis branchez une clé USB : PrintForge télécharge le fichier, vérifie son empreinte, le met seul à la racine de la clé (les autres .bbf sont retirés) puis éjecte la clé.</p>
-      <div class="ligne"><span id="cle">Recherche d’une clé USB…</span><button class="bouton principal" id="copier" hidden>Copier sur cette clé</button></div>
+      <h2 data-en="By USB drive">Par clé USB</h2>
+      <p class="muet" data-en="Choose the version, then plug in a USB drive: PrintForge downloads the file, checks its checksum, puts it alone at the root of the drive (other .bbf files are removed), then ejects the drive.">Choisissez la version, puis branchez une clé USB : PrintForge télécharge le fichier, vérifie son empreinte, le met seul à la racine de la clé (les autres .bbf sont retirés) puis éjecte la clé.</p>
+      <div class="ligne"><span id="cle" data-en="Looking for a USB drive…">Recherche d’une clé USB…</span><button class="bouton principal" id="copier" hidden data-en="Copy to this drive">Copier sur cette clé</button></div>
       <p class="message" id="msgCle" role="status"></p>
     </section>
 
     <section class="carte">
-      <h2>Par le réseau</h2>
-      <p class="muet">L’imprimante, au repos, reçoit le fichier vérifié puis redémarre pour l’installer. Les firmwares actuels ne le permettent pas encore : PrintForge vous le dira, passez alors par la clé USB.</p>
-      <div class="ligne"><button class="bouton" id="reseau">Installer par le réseau</button></div>
+      <h2 data-en="Over the network">Par le réseau</h2>
+      <p class="muet" data-en="The idle printer receives the verified file, then restarts to install it. Current firmwares don’t allow this yet: PrintForge will tell you, then use the USB drive.">L’imprimante, au repos, reçoit le fichier vérifié puis redémarre pour l’installer. Les firmwares actuels ne le permettent pas encore : PrintForge vous le dira, passez alors par la clé USB.</p>
+      <div class="ligne"><button class="bouton" id="reseau" data-en="Install over the network">Installer par le réseau</button></div>
       <p class="message" id="msgReseau" role="status"></p>
     </section>
 
     <section class="carte">
-      <h2>Première installation du firmware OneDrop3D</h2>
-      <p class="alerte">Une seule fois, il faut casser l’appendice de la carte xBuddy : sans cela, l’imprimante refuse tout firmware non officiel. Ce geste est irréversible et c’est votre décision. Les versions officielles s’installent sans lui.</p>
+      <h2 data-en="First installation of the OneDrop3D firmware">Première installation du firmware OneDrop3D</h2>
+      <p class="alerte" data-en="Once, you must break the appendix on the xBuddy board: without that, the printer refuses any unofficial firmware. This is irreversible and it is your decision. Official versions install without it.">Une seule fois, il faut casser l’appendice de la carte xBuddy : sans cela, l’imprimante refuse tout firmware non officiel. Ce geste est irréversible et c’est votre décision. Les versions officielles s’installent sans lui.</p>
       <ol>
-        <li>Imprimante éteinte et débranchée, ouvrez le boîtier de l’électronique et cassez la partie centrale du petit sceau marqué « ! » (tournevis plat ou pince fine). L’imprimante n’affiche rien de particulier ensuite : c’est normal.</li>
-        <li>Branchez la clé préparée sur l’imprimante, appuyez sur reset, puis choisissez <b>FLASH</b>.</li>
-        <li>Pour une version identique ou plus ancienne : appuyez sur reset puis, dès que le logo apparaît, une fois sur la molette, et choisissez <b>FLASH</b>.</li>
-        <li>Vérifiez la version dans <b>Info › Infos Version</b>.</li>
+        <li data-en="With the printer off and unplugged, open the electronics box and break the middle part of the small seal marked “!” (flat screwdriver or fine pliers). The printer shows nothing special afterwards: that’s normal.">Imprimante éteinte et débranchée, ouvrez le boîtier de l’électronique et cassez la partie centrale du petit sceau marqué « ! » (tournevis plat ou pince fine). L’imprimante n’affiche rien de particulier ensuite : c’est normal.</li>
+        <li data-en="Plug the prepared drive into the printer, press reset, then choose <b>FLASH</b>.">Branchez la clé préparée sur l’imprimante, appuyez sur reset, puis choisissez <b>FLASH</b>.</li>
+        <li data-en="For the same or an older version: press reset then, as soon as the logo appears, press the knob once, and choose <b>FLASH</b>.">Pour une version identique ou plus ancienne : appuyez sur reset puis, dès que le logo apparaît, une fois sur la molette, et choisissez <b>FLASH</b>.</li>
+        <li data-en="Check the version in <b>Info › Version Info</b>.">Vérifiez la version dans <b>Info › Infos Version</b>.</li>
       </ol>
-      <p class="muet">La clé doit être en FAT32 avec le schéma MBR. Sur Mac : Utilitaire de disque › Présentation › Afficher tous les appareils, choisissez la clé elle-même puis Effacer, avec « MS-DOS (FAT) » et « Master Boot Record ». Sur Windows : clic droit sur la clé › Formater › FAT32 (clé de 32 Go au plus).</p>
-      <div class="ligne"><button class="bouton" data-lien="https://help.prusa3d.com/article/flashing-custom-firmware-core-one-l-core-one-mk4-s-mk3-9-s-mk3-5-s_814967">Article Prusa, avec la photo du sceau</button></div>
+      <p class="muet" data-en="The drive must be FAT32 with the MBR scheme. On Mac: Disk Utility › View › Show All Devices, choose the drive itself, then Erase, with “MS-DOS (FAT)” and “Master Boot Record”. On Windows: right-click the drive › Format › FAT32 (32 GB drive at most).">La clé doit être en FAT32 avec le schéma MBR. Sur Mac : Utilitaire de disque › Présentation › Afficher tous les appareils, choisissez la clé elle-même puis Effacer, avec « MS-DOS (FAT) » et « Master Boot Record ». Sur Windows : clic droit sur la clé › Formater › FAT32 (clé de 32 Go au plus).</p>
+      <div class="ligne"><button class="bouton" data-lien="https://help.prusa3d.com/article/flashing-custom-firmware-core-one-l-core-one-mk4-s-mk3-9-s-mk3-5-s_814967" data-en="Prusa article, with a photo of the seal">Article Prusa, avec la photo du sceau</button></div>
     </section>
 
     <section class="carte">
-      <h2>Firmware du MMU3</h2>
-      <p class="muet">Le firmware OneDrop3D du MMU active les commandes de la poulie (Axes du MMU). Les versions « Officiel Prusa » servent à revenir en arrière. PrintForge l’installe par le port USB du MMU, comme PrusaSlicer, puis relit tout ce qu’il a écrit.</p>
+      <h2 data-en="MMU3 firmware">Firmware du MMU3</h2>
+      <p class="muet" data-en="The OneDrop3D MMU firmware enables the pulley controls (MMU axes). The “Official Prusa” versions are for going back. PrintForge installs it through the MMU’s USB port, like PrusaSlicer, then reads back everything it wrote.">Le firmware OneDrop3D du MMU active les commandes de la poulie (Axes du MMU). Les versions « Officiel Prusa » servent à revenir en arrière. PrintForge l’installe par le port USB du MMU, comme PrusaSlicer, puis relit tout ce qu’il a écrit.</p>
       <ol>
-        <li>Laissez le MMU branché sur l’imprimante, allumée et au repos : c’est elle qui l’alimente. Sur CORE One, activez d’abord Atelier › MMU › Réglages › « Préparer la mise à jour USB du MMU » (firmware OneDrop3D 8.0.2.27 ou plus récent) : l’imprimante cesse de parler au MMU pendant l’installation.</li>
-        <li>Reliez le port micro-USB de la carte du MMU à cet ordinateur, avec un câble qui transmet les données (pas un câble de charge seule).</li>
-        <li>Choisissez la version, puis « Installer sur le MMU ». Ne débranchez rien avant la fin, moins d’une minute.</li>
-        <li>Sur CORE One, touchez ensuite « Terminer » sur l’imprimante : le MMU redémarre et sa nouvelle version s’affiche.</li>
+        <li data-en="Leave the MMU connected to the printer, which must be on and idle: the printer powers it. On CORE One, first enable Workshop › MMU › Settings › “Prepare MMU USB update” (OneDrop3D firmware 8.0.2.27 or newer): the printer stops talking to the MMU during the installation.">Laissez le MMU branché sur l’imprimante, allumée et au repos : c’est elle qui l’alimente. Sur CORE One, activez d’abord Atelier › MMU › Réglages › « Préparer la mise à jour USB du MMU » (firmware OneDrop3D 8.0.2.27 ou plus récent) : l’imprimante cesse de parler au MMU pendant l’installation.</li>
+        <li data-en="Connect the micro-USB port of the MMU board to this computer, with a cable that carries data (not a charge-only cable).">Reliez le port micro-USB de la carte du MMU à cet ordinateur, avec un câble qui transmet les données (pas un câble de charge seule).</li>
+        <li data-en="Choose the version, then “Install on the MMU”. Don’t unplug anything before the end, less than a minute.">Choisissez la version, puis « Installer sur le MMU ». Ne débranchez rien avant la fin, moins d’une minute.</li>
+        <li data-en="On CORE One, then touch “Finish” on the printer: the MMU restarts and its new version is shown.">Sur CORE One, touchez ensuite « Terminer » sur l’imprimante : le MMU redémarre et sa nouvelle version s’affiche.</li>
       </ol>
-      <label class="champ">Version<select id="versionMmu"><option>Lecture des versions sur GitHub…</option></select></label>
-      <div class="ligne"><button class="bouton" id="actualiserMmu">Actualiser la liste</button></div>
-      <div class="ligne espace"><span id="mmu">Recherche du MMU…</span><button class="bouton principal" id="flasherMmu" hidden>Installer sur le MMU</button></div>
+      <label class="champ">Version<select id="versionMmu"><option data-en="Reading the versions on GitHub…">Lecture des versions sur GitHub…</option></select></label>
+      <div class="ligne"><button class="bouton" id="actualiserMmu" data-en="Refresh the list">Actualiser la liste</button></div>
+      <div class="ligne espace"><span id="mmu" data-en="Looking for the MMU…">Recherche du MMU…</span><button class="bouton principal" id="flasherMmu" hidden data-en="Install on the MMU">Installer sur le MMU</button></div>
       <progress id="progresMmu" max="1" value="0" hidden></progress>
       <p class="message" id="msgMmu" role="status"></p>
     </section>
@@ -184,27 +193,27 @@
 <main class="vue" id="envoyer" role="tabpanel" aria-labelledby="onglet-envoyer" hidden>
   <div class="colonne">
     <section class="carte">
-      <h2>Imprimer un fichier</h2>
-      <p class="muet">Un fichier tranché pour la CORE One (.gcode ou .bgcode) part sur la clé USB de l’imprimante, qui l’imprime aussitôt. En Wi-Fi, un gros fichier peut prendre plusieurs minutes.</p>
-      <div class="ligne"><button class="bouton" id="choisirGcode">Choisir un fichier…</button><span class="muet" id="nomGcode">Aucun fichier choisi</span></div>
-      <div class="ligne"><button class="bouton principal" id="envoyerGcode" disabled>Envoyer et imprimer</button><button class="bouton" id="lancerGcode" hidden>Imprimer maintenant</button></div>
+      <h2 data-en="Print a file">Imprimer un fichier</h2>
+      <p class="muet" data-en="A file sliced for the CORE One (.gcode or .bgcode) goes to the printer’s USB drive, and the printer prints it right away. Over Wi-Fi, a big file can take several minutes.">Un fichier tranché pour la CORE One (.gcode ou .bgcode) part sur la clé USB de l’imprimante, qui l’imprime aussitôt. En Wi-Fi, un gros fichier peut prendre plusieurs minutes.</p>
+      <div class="ligne"><button class="bouton" id="choisirGcode" data-en="Choose a file…">Choisir un fichier…</button><span class="muet" id="nomGcode" data-en="No file chosen">Aucun fichier choisi</span></div>
+      <div class="ligne"><button class="bouton principal" id="envoyerGcode" disabled data-en="Send and print">Envoyer et imprimer</button><button class="bouton" id="lancerGcode" hidden data-en="Print now">Imprimer maintenant</button></div>
       <p class="message" id="msgGcode" role="status"></p>
     </section>
 
     <section class="carte">
-      <h2>Musique</h2>
-      <p class="muet">Un fichier MIDI devient un G-code que les moteurs de l’axe X jouent, une note à la fois (la plus aiguë), en grands allers-retours autour du centre du plateau. L’imprimante fait d’abord sa mise à l’origine : plateau dégagé. Pour plus de volume, coupez le mode furtif.</p>
-      <div class="ligne"><button class="bouton" id="choisirMidi">Choisir un fichier MIDI…</button><span class="muet" id="nomMidi">Aucun fichier choisi</span></div>
-      <label class="champ">Pas complets par millimètre de l’axe X<input type="number" id="pas" min="0.1" max="10000" step="any" value="6.25" aria-describedby="aidePas"></label>
-      <p class="muet" id="aidePas">6,25 pour la CORE One. À régler à l’oreille : trop aigu, augmentez la valeur ; trop grave, diminuez-la (doubler la valeur fait descendre d’une octave et réduit les mouvements de moitié).</p>
-      <label class="case"><input type="checkbox" id="jouer" checked> Jouer dès réception</label>
-      <div class="ligne"><button class="bouton principal" id="envoyerMidi" disabled>Convertir et envoyer</button><button class="bouton" id="cleMidi" disabled>Mettre sur une clé USB</button><button class="bouton" id="lancerMidi" hidden>Jouer maintenant</button></div>
+      <h2 data-en="Music">Musique</h2>
+      <p class="muet" data-en="A MIDI file becomes a G-code that the X-axis motors play, one note at a time (the highest), in wide back-and-forth moves around the centre of the bed. The printer homes first: keep the bed clear. For more volume, turn off stealth mode.">Un fichier MIDI devient un G-code que les moteurs de l’axe X jouent, une note à la fois (la plus aiguë), en grands allers-retours autour du centre du plateau. L’imprimante fait d’abord sa mise à l’origine : plateau dégagé. Pour plus de volume, coupez le mode furtif.</p>
+      <div class="ligne"><button class="bouton" id="choisirMidi" data-en="Choose a MIDI file…">Choisir un fichier MIDI…</button><span class="muet" id="nomMidi" data-en="No file chosen">Aucun fichier choisi</span></div>
+      <label class="champ"><span data-en="Full steps per millimetre on the X axis">Pas complets par millimètre de l’axe X</span><input type="number" id="pas" min="0.1" max="10000" step="any" value="6.25" aria-describedby="aidePas"></label>
+      <p class="muet" id="aidePas" data-en="6.25 for the CORE One. Tune it by ear: too high, increase the value; too low, decrease it (doubling the value drops one octave and halves the moves).">6,25 pour la CORE One. À régler à l’oreille : trop aigu, augmentez la valeur ; trop grave, diminuez-la (doubler la valeur fait descendre d’une octave et réduit les mouvements de moitié).</p>
+      <label class="case"><input type="checkbox" id="jouer" checked><span data-en="Play as soon as it arrives">Jouer dès réception</span></label>
+      <div class="ligne"><button class="bouton principal" id="envoyerMidi" disabled data-en="Convert and send">Convertir et envoyer</button><button class="bouton" id="cleMidi" disabled data-en="Put on a USB drive">Mettre sur une clé USB</button><button class="bouton" id="lancerMidi" hidden data-en="Play now">Jouer maintenant</button></div>
       <p class="message" id="msgMidi" role="status"></p>
     </section>
 
     <section class="carte">
-      <h2>Bientôt</h2>
-      <p class="muet">Les bobines TigerTag : le filament réglé tout seul sur l’imprimante par PrusaLink, et l’inventaire synchronisé.</p>
+      <h2 data-en="Coming soon">Bientôt</h2>
+      <p class="muet" data-en="TigerTag spools: the filament set automatically on the printer through PrusaLink, and the inventory kept in sync.">Les bobines TigerTag : le filament réglé tout seul sur l’imprimante par PrusaLink, et l’inventaire synchronisé.</p>
     </section>
   </div>
 </main>

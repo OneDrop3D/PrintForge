@@ -23,7 +23,7 @@ impl Imprimante {
         let c = config(app);
         match (c["adresse"].as_str(), c["mot_de_passe"].as_str()) {
             (Some(a), Some(m)) if !a.is_empty() => Ok(Self { adresse: a.into(), cle: m.into() }),
-            _ => Err("Reliez d’abord votre imprimante, dans l’onglet Imprimante.".into()),
+            _ => Err(tr!("Reliez d’abord votre imprimante, dans l’onglet Imprimante.", "Link your printer first, in the Printer tab.")),
         }
     }
 
@@ -45,13 +45,17 @@ impl Imprimante {
         }
         let r = r.body(corps).map_err(|e| e.to_string())?;
         let mut reponse = client(delai).run(r).map_err(|e| {
-            format!(
+            tr!(
                 "L’imprimante ne répond pas à l’adresse {} : vérifiez qu’elle est allumée et sur le même réseau que cet ordinateur ({e}).",
+                "The printer is not answering at {}: check that it is on and on the same network as this computer ({e}).",
                 self.adresse
             )
         })?;
         match reponse.status().as_u16() {
-            401 => Err("Mot de passe refusé : recopiez celui affiché sur l’imprimante, dans Réglages › Réseau › PrusaLink.".into()),
+            401 => Err(tr!(
+                "Mot de passe refusé : recopiez celui affiché sur l’imprimante, dans Réglages › Réseau › PrusaLink.",
+                "Password refused: copy the one shown on the printer, in Settings › Network › PrusaLink."
+            )),
             code => Ok((code, reponse.body_mut().read_to_string().unwrap_or_default())),
         }
     }
@@ -59,8 +63,8 @@ impl Imprimante {
     pub fn lire(&self, chemin: &str) -> Result<Value, String> {
         match self.requete("GET", chemin, &[], (), COURT)? {
             (200, corps) => serde_json::from_str(&corps)
-                .map_err(|_| "Réponse illisible : est-ce bien une imprimante Prusa à cette adresse ?".into()),
-            (code, _) => Err(format!("L’imprimante a répondu {code} à {chemin}.")),
+                .map_err(|_| tr!("Réponse illisible : est-ce bien une imprimante Prusa à cette adresse ?", "Unreadable answer: is there really a Prusa printer at this address?")),
+            (code, _) => Err(tr!("L’imprimante a répondu {code} à {chemin}.", "The printer answered {code} to {chemin}.")),
         }
     }
 
@@ -97,7 +101,7 @@ fn ecrire_config(app: &AppHandle, valeur: &Value) -> Result<(), String> {
         }
         f.write_all(valeur.to_string().as_bytes())
     };
-    ecrire().map_err(|e| format!("Configuration impossible à enregistrer : {e}"))
+    ecrire().map_err(|e| tr!("Configuration impossible à enregistrer : {e}", "Could not save the settings: {e}"))
 }
 
 /// Ce que la page peut savoir de la configuration : jamais le mot de passe lui-même.
@@ -116,7 +120,10 @@ pub fn imprimante_enregistrer(app: AppHandle, adresse: String, mot_de_passe: Str
     let saisie = adresse.trim().trim_start_matches("http://").trim_start_matches("https://");
     let adresse = saisie.split('/').next().unwrap_or("");
     if adresse.is_empty() || !adresse.chars().all(|c| c.is_ascii_alphanumeric() || ".-:[]".contains(c)) {
-        return Err("Adresse invalide : saisissez l’adresse IP de l’imprimante (par exemple 192.168.1.50) ou son nom.".into());
+        return Err(tr!(
+            "Adresse invalide : saisissez l’adresse IP de l’imprimante (par exemple 192.168.1.50) ou son nom.",
+            "Invalid address: enter the printer’s IP address (for example 192.168.1.50) or its name."
+        ));
     }
     // champ laissé vide : le mot de passe déjà enregistré est gardé ; six chiffres : le code d'association affiché
     // par l'imprimante (firmware OneDrop3D), échangé contre la vraie clé
@@ -129,21 +136,31 @@ pub fn imprimante_enregistrer(app: AppHandle, adresse: String, mot_de_passe: Str
         saisi
     };
     ecrire_config(&app, &json!({ "adresse": adresse, "mot_de_passe": mot_de_passe }))?;
-    Imprimante::reliee(&app)?.lire("/api/version")
+    version(&Imprimante::reliee(&app)?)
 }
 
-/// La version (nom, firmware) et l’état (températures, impression) de l’imprimante, tels que PrusaLink les donne.
+/// /api/version (nom, firmware), avec « modele », l’imprimante reconnue pour la liste des firmwares.
+fn version(imprimante: &Imprimante) -> Result<Value, String> {
+    let mut v = imprimante.lire("/api/version")?;
+    let modele = crate::firmware::modele_imprimante(&v);
+    if let Some(o) = v.as_object_mut() {
+        o.insert("modele".into(), json!(modele));
+    }
+    Ok(v)
+}
+
+/// La version (nom, firmware, modèle) et l’état (températures, impression) de l’imprimante, tels que PrusaLink les donne.
 #[tauri::command(async)]
 pub fn imprimante_etat(app: AppHandle) -> Result<Value, String> {
     let imprimante = Imprimante::reliee(&app)?;
-    Ok(json!({ "version": imprimante.lire("/api/version")?, "statut": imprimante.lire("/api/v1/status")? }))
+    Ok(json!({ "version": version(&imprimante)?, "statut": imprimante.lire("/api/v1/status")? }))
 }
 
 /// Les imprimantes Prusa annoncées sur le réseau local (service Bonjour de PrusaLink), écoutées 3 secondes.
 #[tauri::command(async)]
 pub fn imprimantes_chercher() -> Result<Vec<Value>, String> {
-    let mdns = mdns_sd::ServiceDaemon::new().map_err(|e| format!("Recherche impossible : {e}"))?;
-    let annonces = mdns.browse("_prusalink._tcp.local.").map_err(|e| format!("Recherche impossible : {e}"))?;
+    let mdns = mdns_sd::ServiceDaemon::new().map_err(|e| tr!("Recherche impossible : {e}", "Search failed: {e}"))?;
+    let annonces = mdns.browse("_prusalink._tcp.local.").map_err(|e| tr!("Recherche impossible : {e}", "Search failed: {e}"))?;
     let fin = Instant::now() + Duration::from_secs(3);
     let mut trouvees: Vec<Value> = vec![];
     while let Ok(evenement) = annonces.recv_deadline(fin) {
@@ -179,12 +196,14 @@ pub fn resultat_envoi((code, corps): (u16, String), nom: &str, imprimer: bool) -
 /// Les refus d’un envoi, d’après les réponses du firmware Buddy (gcode_upload.cpp).
 pub fn refus(code: u16, corps: &str) -> String {
     match code {
-        404 => "L’imprimante ne trouve pas sa clé USB : branchez-en une sur l’imprimante.".into(),
-        409 if corps.contains("Another transfer") => "Un autre envoi vers l’imprimante est en cours : réessayez quand il sera fini.".into(),
-        409 if corps.contains("busy") => "Ce fichier est en cours d’impression : il ne peut pas être remplacé.".into(),
-        415 => "L’imprimante refuse ce type de fichier.".into(),
-        507 => "La clé USB de l’imprimante est pleine, ou l’écriture y a échoué.".into(),
-        _ => format!("L’imprimante a refusé l’envoi (code {code})."),
+        404 => tr!("L’imprimante ne trouve pas sa clé USB : branchez-en une sur l’imprimante.", "The printer can’t find its USB drive: plug one into the printer."),
+        409 if corps.contains("Another transfer") => {
+            tr!("Un autre envoi vers l’imprimante est en cours : réessayez quand il sera fini.", "Another upload to the printer is in progress: try again when it is done.")
+        }
+        409 if corps.contains("busy") => tr!("Ce fichier est en cours d’impression : il ne peut pas être remplacé.", "This file is being printed: it can’t be replaced."),
+        415 => tr!("L’imprimante refuse ce type de fichier.", "The printer refuses this file type."),
+        507 => tr!("La clé USB de l’imprimante est pleine, ou l’écriture y a échoué.", "The printer’s USB drive is full, or writing to it failed."),
+        _ => tr!("L’imprimante a refusé l’envoi (code {code}).", "The printer refused the upload (code {code})."),
     }
 }
 
@@ -194,11 +213,11 @@ pub fn envoyer_fichier(app: AppHandle, chemin: String) -> Result<Value, String> 
     let chemin = Path::new(&chemin);
     let extension = chemin.extension().and_then(|e| e.to_str()).unwrap_or("").to_ascii_lowercase();
     if extension != "gcode" && extension != "bgcode" {
-        return Err("Choisissez un fichier .gcode ou .bgcode.".into());
+        return Err(tr!("Choisissez un fichier .gcode ou .bgcode.", "Choose a .gcode or .bgcode file."));
     }
     let imprimante = Imprimante::reliee(&app)?;
-    let fichier = fs::File::open(chemin).map_err(|e| format!("Fichier illisible : {e}"))?;
-    let taille = fichier.metadata().map_err(|e| format!("Fichier illisible : {e}"))?.len();
+    let fichier = fs::File::open(chemin).map_err(|e| tr!("Fichier illisible : {e}", "Unreadable file: {e}"))?;
+    let taille = fichier.metadata().map_err(|e| tr!("Fichier illisible : {e}", "Unreadable file: {e}"))?.len();
     let nom = nom_sur(&chemin.file_stem().unwrap_or_default().to_string_lossy(), &extension);
     resultat_envoi(imprimante.deposer(&nom, fichier, taille, true)?, &nom, true)
 }
@@ -207,13 +226,16 @@ pub fn envoyer_fichier(app: AppHandle, chemin: String) -> Result<Value, String> 
 #[tauri::command(async)]
 pub fn imprimer(app: AppHandle, nom: String) -> Result<(), String> {
     if nom.is_empty() || !nom.chars().all(|c| c.is_ascii_alphanumeric() || "-_.".contains(c)) {
-        return Err("Nom de fichier invalide.".into());
+        return Err(tr!("Nom de fichier invalide.", "Invalid file name."));
     }
     match Imprimante::reliee(&app)?.requete("POST", &format!("{USB}{nom}"), &[], &b""[..], COURT)?.0 {
         200 | 204 => Ok(()),
-        409 => Err("L’imprimante ne peut toujours pas le lancer : une impression est en cours, ou elle attend une action sur son écran.".into()),
-        404 => Err("Ce fichier n’est plus sur la clé de l’imprimante.".into()),
-        code => Err(format!("L’imprimante a refusé (code {code}).")),
+        409 => Err(tr!(
+            "L’imprimante ne peut toujours pas le lancer : une impression est en cours, ou elle attend une action sur son écran.",
+            "The printer still can’t start it: a print is in progress, or it is waiting for an action on its screen."
+        )),
+        404 => Err(tr!("Ce fichier n’est plus sur la clé de l’imprimante.", "This file is no longer on the printer’s USB drive.")),
+        code => Err(tr!("L’imprimante a refusé (code {code}).", "The printer refused (code {code}).")),
     }
 }
 
@@ -227,19 +249,28 @@ fn associer(adresse: &str, code: &str) -> Result<Option<String>, String> {
         .body(())
         .map_err(|e| e.to_string())?;
     let mut reponse = client(COURT).run(r).map_err(|e| {
-        format!("L’imprimante ne répond pas à l’adresse {adresse} : vérifiez qu’elle est allumée et sur le même réseau que cet ordinateur ({e}).")
+        tr!(
+            "L’imprimante ne répond pas à l’adresse {adresse} : vérifiez qu’elle est allumée et sur le même réseau que cet ordinateur ({e}).",
+            "The printer is not answering at {adresse}: check that it is on and on the same network as this computer ({e})."
+        )
     })?;
     match reponse.status().as_u16() {
         200 => {
             let v: Value = serde_json::from_str(&reponse.body_mut().read_to_string().unwrap_or_default()).unwrap_or_default();
             match v["message"].as_str() {
                 Some(cle) if !cle.is_empty() => Ok(Some(cle.to_string())),
-                _ => Err("L’imprimante a accepté le code mais n’a pas envoyé de clé : réessayez avec un nouveau code.".into()),
+                _ => Err(tr!(
+                    "L’imprimante a accepté le code mais n’a pas envoyé de clé : réessayez avec un nouveau code.",
+                    "The printer accepted the code but sent no key: try again with a new code."
+                )),
             }
         }
-        403 => Err("Code refusé ou expiré : affichez un nouveau code sur l’imprimante (Réglages › Fonctions OneDrop3D › Associer PrintForge).".into()),
+        403 => Err(tr!(
+            "Code refusé ou expiré : affichez un nouveau code sur l’imprimante (Réglages › Fonctions OneDrop3D › Associer PrintForge).",
+            "Code refused or expired: show a new code on the printer (Settings › OneDrop3D Features › Pair PrintForge)."
+        )),
         404 | 405 => Ok(None),
-        code => Err(format!("L’imprimante a refusé l’association (code {code}).")),
+        code => Err(tr!("L’imprimante a refusé l’association (code {code}).", "The printer refused the pairing (code {code}).")),
     }
 }
 

@@ -17,7 +17,12 @@ const FIRMWARE: u16 = 4;
 /// 28 672 octets pour le firmware : les 4 Ko du haut de l’ATmega32U4 sont au chargeur.
 const APPLI: usize = 0x7000;
 const PAGE: usize = 128;
-const REPRISE: &str = "Le MMU n’est pas abîmé : son chargeur reste joignable. Relancez l’installation ; si le MMU n’est plus détecté, éteignez puis rallumez l’imprimante (elle l’alimente), puis relancez.";
+fn reprise() -> String {
+    tr!(
+        "Le MMU n’est pas abîmé : son chargeur reste joignable. Relancez l’installation ; si le MMU n’est plus détecté, éteignez puis rallumez l’imprimante (elle l’alimente), puis relancez.",
+        "The MMU is not damaged: its bootloader is still reachable. Start the installation again; if the MMU is no longer detected, turn the printer off and on again (it powers the MMU), then start again."
+    )
+}
 
 /// Le .hex du MMU3 d’une release (« MMU3_FW3.0.4+936.hex », « MMU2S_MMU3_FW3.0.4+940.hex »).
 fn mmu3(_: &str, nom: &str) -> bool {
@@ -79,14 +84,19 @@ fn chargeur(app: &AppHandle) -> Result<String, String> {
         // Mode de secours, comme PrusaSlicer (avr109_lookup_port) : un MMU dont le firmware n’apparaît pas en USB passe
         // dans son chargeur par son bouton reset, qui y reste quelques secondes
         [] => {
-            dire(app, "Aucun MMU vu : appuyez maintenant sur le bouton reset du MMU, à côté de son port USB (30 s)…");
-            return attendre(CHARGEUR, 30).ok_or_else(|| "Aucun MMU vu, même après le reset : rien n’a été écrit. Reliez le port micro-USB de la carte du MMU à cet ordinateur avec un câble qui transmet les données (pas un câble de charge seule), imprimante allumée, puis réessayez.".into());
+            dire(app, &tr!("Aucun MMU vu : appuyez maintenant sur le bouton reset du MMU, à côté de son port USB (30 s)…", "No MMU seen: press the MMU’s reset button now, next to its USB port (30 s)…"));
+            return attendre(CHARGEUR, 30).ok_or_else(|| {
+                tr!(
+                    "Aucun MMU vu, même après le reset : rien n’a été écrit. Reliez le port micro-USB de la carte du MMU à cet ordinateur avec un câble qui transmet les données (pas un câble de charge seule), imprimante allumée, puis réessayez.",
+                    "No MMU seen, even after the reset: nothing was written. Connect the micro-USB port of the MMU board to this computer with a cable that carries data (not a charge-only cable), printer on, then try again."
+                )
+            });
         }
         [(port, CHARGEUR)] => return Ok(port.clone()),
         [(port, _)] => port.clone(),
-        _ => return Err("Plusieurs MMU sont reliés à cet ordinateur : n’en gardez qu’un.".into()),
+        _ => return Err(tr!("Plusieurs MMU sont reliés à cet ordinateur : n’en gardez qu’un.", "Several MMUs are connected to this computer: keep only one.")),
     };
-    dire(app, "Redémarrage du MMU dans son mode de mise à jour…");
+    dire(app, &tr!("Redémarrage du MMU dans son mode de mise à jour…", "Restarting the MMU in its update mode…"));
     if let Ok(p) = serialport::new(&port, 1200).open() {
         sleep(Duration::from_millis(50));
         drop(p);
@@ -94,8 +104,13 @@ fn chargeur(app: &AppHandle) -> Result<String, String> {
     if let Some(port) = attendre(CHARGEUR, 5) {
         return Ok(port);
     }
-    dire(app, "Le MMU ne redémarre pas seul : appuyez sur le bouton reset de sa carte, à côté du port USB.");
-    attendre(CHARGEUR, 20).ok_or_else(|| "Le MMU n’est pas passé dans son mode de mise à jour : rien n’a été écrit. Vérifiez le câble, puis réessayez.".into())
+    dire(app, &tr!("Le MMU ne redémarre pas seul : appuyez sur le bouton reset de sa carte, à côté du port USB.", "The MMU does not restart by itself: press the reset button on its board, next to the USB port."));
+    attendre(CHARGEUR, 20).ok_or_else(|| {
+        tr!(
+            "Le MMU n’est pas passé dans son mode de mise à jour : rien n’a été écrit. Vérifiez le câble, puis réessayez.",
+            "The MMU did not enter its update mode: nothing was written. Check the cable, then try again."
+        )
+    })
 }
 
 /// Le firmware vérifié écrit dans le MMU, relu, puis le MMU redémarré.
@@ -103,13 +118,13 @@ fn chargeur(app: &AppHandle) -> Result<String, String> {
 pub fn mmu_flasher(app: AppHandle, version: Value) -> Result<Value, String> {
     let (url, _, taille, sha256) = fichier(&DEPOTS, mmu3, &version)?;
     if taille > 256 * 1024 {
-        return Err("Ce fichier est trop gros pour être un firmware du MMU3.".into());
+        return Err(tr!("Ce fichier est trop gros pour être un firmware du MMU3.", "This file is too big to be an MMU3 firmware."));
     }
-    dire(&app, "Téléchargement et vérification du firmware…");
+    dire(&app, &tr!("Téléchargement et vérification du firmware…", "Downloading and checking the firmware…"));
     let octets = telecharger(&url, taille, &sha256)?;
-    let (image, pages) = lire_hex(std::str::from_utf8(&octets).map_err(|_| "Ce fichier n’est pas un .hex lisible.".to_string())?)?;
+    let (image, pages) = lire_hex(std::str::from_utf8(&octets).map_err(|_| tr!("Ce fichier n’est pas un .hex lisible.", "This file is not a readable .hex."))?)?;
     let port = chargeur(&app)?;
-    dire(&app, "Écriture du firmware, puis relecture : ne débranchez rien…");
+    dire(&app, &tr!("Écriture du firmware, puis relecture : ne débranchez rien…", "Writing the firmware, then reading it back: don’t unplug anything…"));
     // le port du chargeur peut mettre un instant à s’ouvrir après son apparition
     let mut ouvert = Err("".to_string());
     for _ in 0..5 {
@@ -119,21 +134,21 @@ pub fn mmu_flasher(app: AppHandle, version: Value) -> Result<Value, String> {
         }
         sleep(Duration::from_millis(400));
     }
-    let mut p = ouvert.map_err(|e| format!("Le port du MMU ne s’ouvre pas ({e}). {REPRISE}"))?;
+    let mut p = ouvert.map_err(|e| tr!("Le port du MMU ne s’ouvre pas ({e}). {}", "The MMU port won’t open ({e}). {}", reprise()))?;
     p.vider();
     flasher(&mut p, &image, &pages, |fait, total| {
         let _ = app.emit("mmu", json!({ "fait": fait, "total": total }));
     })
-    .map_err(|e| format!("{e} {REPRISE}"))?;
+    .map_err(|e| format!("{e} {}", reprise()))?;
     drop(p);
-    dire(&app, "Firmware écrit et vérifié : redémarrage du MMU…");
+    dire(&app, &tr!("Firmware écrit et vérifié : redémarrage du MMU…", "Firmware written and verified: restarting the MMU…"));
     Ok(json!({ "redemarre": attendre(FIRMWARE, 10).is_some() }))
 }
 
 /// L’image du firmware lue dans le .hex (Intel HEX, jusqu’au premier enregistrement de fin comme PrusaSlicer) :
 /// 0xFF dans les trous, et les pages de 128 octets qui portent des données.
 fn lire_hex(texte: &str) -> Result<(Vec<u8>, Vec<usize>), String> {
-    let illisible = || "Ce .hex est abîmé : rien n’a été écrit.".to_string();
+    let illisible = || tr!("Ce .hex est abîmé : rien n’a été écrit.", "This .hex is damaged: nothing was written.");
     let (mut image, mut pages) = (vec![0xFF; APPLI], vec![false; APPLI / PAGE]);
     let (mut base, mut mmu) = (0, false);
     for ligne in texte.lines().map(str::trim).filter(|l| !l.is_empty()) {
@@ -154,12 +169,15 @@ fn lire_hex(texte: &str) -> Result<(Vec<u8>, Vec<usize>), String> {
             (0, _) => {
                 let debut = base + u16::from_be_bytes([o[1], o[2]]) as usize;
                 if debut + n > APPLI {
-                    return Err("Ce firmware est trop gros pour le MMU3 : il déborderait sur son chargeur. Rien n’a été écrit.".into());
+                    return Err(tr!(
+                        "Ce firmware est trop gros pour le MMU3 : il déborderait sur son chargeur. Rien n’a été écrit.",
+                        "This firmware is too big for the MMU3: it would overwrite its bootloader. Nothing was written."
+                    ));
                 }
                 image[debut..debut + n].copy_from_slice(donnees);
                 pages[debut / PAGE..=(debut + n - 1) / PAGE].fill(true);
             }
-            (1, _) if !mmu => return Err("Ce .hex n’est pas un firmware de MMU : rien n’a été écrit.".into()),
+            (1, _) if !mmu => return Err(tr!("Ce .hex n’est pas un firmware de MMU : rien n’a été écrit.", "This .hex is not an MMU firmware: nothing was written.")),
             (1, _) if !pages[0] => return Err(illisible()), // pas de vecteurs à l’adresse 0
             (1, _) => return Ok((image, (0..pages.len()).filter(|&p| pages[p]).collect())),
             (2, 2) => base = (u16::from_be_bytes([donnees[0], donnees[1]]) as usize) << 4,
@@ -187,14 +205,14 @@ impl Port for Box<dyn serialport::SerialPort> {
 /// `n` octets de la réponse à la commande `c`.
 fn lire<P: Read>(port: &mut P, n: usize, c: u8) -> Result<Vec<u8>, String> {
     let mut v = vec![0; n];
-    port.read_exact(&mut v).map_err(|e| format!("Le chargeur du MMU ne répond pas à la commande « {} » ({e}).", c as char))?;
+    port.read_exact(&mut v).map_err(|e| tr!("Le chargeur du MMU ne répond pas à la commande « {} » ({e}).", "The MMU bootloader does not answer the “{}” command ({e}).", c as char))?;
     Ok(v)
 }
 
 fn envoyer<P: Write>(port: &mut P, octets: &[u8]) -> Result<(), String> {
     port.write_all(octets)
         .and_then(|_| port.flush())
-        .map_err(|e| format!("Envoi de la commande « {} » au MMU impossible ({e}).", octets[0] as char))
+        .map_err(|e| tr!("Envoi de la commande « {} » au MMU impossible ({e}).", "Could not send the “{}” command to the MMU ({e}).", octets[0] as char))
 }
 
 /// Une commande AVR109 à laquelle le chargeur répond par un retour chariot.
@@ -202,7 +220,7 @@ fn commande<P: Read + Write>(port: &mut P, octets: &[u8]) -> Result<(), String> 
     envoyer(port, octets)?;
     match lire(port, 1, octets[0])?[..] {
         [b'\r'] => Ok(()),
-        _ => Err(format!("Le chargeur du MMU a refusé la commande « {} ».", octets[0] as char)),
+        _ => Err(tr!("Le chargeur du MMU a refusé la commande « {} ».", "The MMU bootloader refused the “{}” command.", octets[0] as char)),
     }
 }
 
@@ -217,7 +235,7 @@ fn identifier<P: Port>(port: &mut P) -> Result<Vec<u8>, String> {
         envoyer(port, b"S")?;
         match lire(port, 1, b'S') {
             Ok(c) if c != [b'?'] => return Ok([c, lire(port, 6, b'S')?].concat()),
-            Ok(_) => erreur = "Le chargeur du MMU ne reconnaît pas la commande « S ».".into(),
+            Ok(_) => erreur = tr!("Le chargeur du MMU ne reconnaît pas la commande « S ».", "The MMU bootloader does not recognise the “S” command."),
             Err(e) => erreur = e,
         }
     }
@@ -258,7 +276,7 @@ fn presenter<P: Port>(port: &mut P) -> Result<(), String> {
     envoyer(port, b"b")?;
     let b = lire(port, 3, b'b')?;
     if b[0] != b'Y' || (u16::from_be_bytes([b[1], b[2]]) as usize) < PAGE {
-        return Err("Le chargeur du MMU n’écrit pas par pages : rien n’a été écrit.".into());
+        return Err(tr!("Le chargeur du MMU n’écrit pas par pages : rien n’a été écrit.", "The MMU bootloader does not write by pages: nothing was written."));
     }
     envoyer(port, b"t")?;
     let mut appareil = None;
@@ -276,7 +294,7 @@ fn presenter<P: Port>(port: &mut P) -> Result<(), String> {
     commande(port, if nom == b"MMCTL20" { b"PMMCTL20" } else { b"P" })?;
     envoyer(port, b"s")?;
     if lire(port, 3, b's')? != [0x87, 0x95, 0x1E] {
-        return Err("Ce n’est pas la puce d’un MMU3 (signature inattendue) : rien n’a été écrit.".into());
+        return Err(tr!("Ce n’est pas la puce d’un MMU3 (signature inattendue) : rien n’a été écrit.", "This is not an MMU3 chip (unexpected signature): nothing was written."));
     }
     Ok(())
 }
@@ -307,7 +325,7 @@ fn flasher<P: Port>(port: &mut P, image: &[u8], pages: &[usize], mut avance: imp
         }
         for &p in passe {
             if relire_page(port, p)? != image[p * PAGE..][..PAGE] {
-                return Err(format!("La relecture ne correspond pas à l’adresse 0x{:04X}.", p * PAGE));
+                return Err(tr!("La relecture ne correspond pas à l’adresse 0x{:04X}.", "Read-back does not match at address 0x{:04X}.", p * PAGE));
             }
             fait += 1;
             avance(fait, total);
